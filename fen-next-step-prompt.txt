@@ -1,0 +1,31 @@
+FEN next-step work order.
+
+Source of truth:
+- .\project-docs\FEN_Master_Build_Proof_Handoff.pdf
+- .\project-docs\FEN_UI_Screen_Design_Spec.pdf
+- .\project-docs\FEN_Brand_and_Positioning_Pack.pdf
+- .\project-docs\FEN_Browse_Map_Addendum.txt
+
+Actual current file state:
+- lib/types.ts already has lowercase status types and core models
+- lib/jobs.ts is a simple data layer for jobs
+- lib/messaging.ts is a simple data layer for conversations/messages
+- app/app/my-jobs.tsx is still a mock/static screen
+- app/app/messages.tsx likely still needs real wiring
+- app/app/job/[id].tsx likely still needs real wiring
+
+Do not guess.
+Do not invent files.
+Do not change Browse yet.
+Do not add reviews or payments.
+
+Next implementation target:
+1. Replace static mock content in My Jobs with real Supabase-backed data.
+2. Add status display and action hooks for the current job lifecycle.
+3. Keep the UI simple and consistent with existing FEN styling.
+4. If a file is not yet known, ask before changing it.
+
+Return:
+- one file at a time
+- full contents only
+- no summary first
