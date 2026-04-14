@@ -1,0 +1,11 @@
+
+Additional locked clarification:
+Apply .\project-docs\FEN_Browse_Map_Addendum.txt together with the main FEN handoff.
+Browse must not be list-only.
+Browse must include:
+- a lightweight map at the top
+- approximate public pins only
+- user location marker if permitted
+- estimated travel time on every job card
+
+If there is any conflict with earlier simplified Browse assumptions, the addendum takes precedence.

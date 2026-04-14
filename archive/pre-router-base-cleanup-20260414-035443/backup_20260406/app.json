@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "FEN",
+    "slug": "fen-mvp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/fen-final-icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "fen",
+    "splash": {
+      "image": "./assets/fen-splash-artwork.jpeg",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E0A14"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "assetBundlePatterns": ["**/*"]
+  }
+}

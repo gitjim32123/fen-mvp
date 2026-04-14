@@ -1,0 +1,64 @@
+FEN Browse Screen Map & Travel Time Addendum
+Attach this addendum to the existing FEN handoff and treat it as a locked clarification.
+
+Purpose
+This addendum clarifies that the Browse experience must include a lightweight interactive map and estimated travel time on job cards. It overrides any earlier simplification that may have implied a list-only Browse screen.
+
+Locked requirement
+The Browse screen must use a hybrid layout:
+1. A lightweight map at the top
+2. A scrollable list of job cards underneath
+
+The list remains the primary interaction area, but the map must be present because it is part of what makes FEN feel local, visual, and immediately understandable.
+
+Map requirements
+The map must:
+- Show approximate job locations using postcode-based or coarse coordinates
+- Show the user’s approximate current location when permission is available
+- Avoid exposing exact private addresses publicly
+- Be lightweight and simple in MVP
+- Support tapping a pin or corresponding card to open the relevant job detail view
+
+Job card requirements
+Each Browse job card must show:
+- Job title
+- Budget
+- Urgency
+- Postcode area / district
+- Estimated distance
+- Estimated travel time
+
+Estimated travel time is a required visual tag, not an optional enhancement.
+
+Interaction rules
+Required behaviour:
+- Tapping a job card opens the Job Detail screen
+- Tapping a map pin opens the same Job Detail screen, or highlights the matching card first if that is the chosen implementation
+- When a job card is selected, the map may highlight that job’s pin
+
+The map is supportive, but it must still be useful and visible.
+
+Privacy and safety rules
+- The map must not reveal exact home or street-level locations in public Browse results
+- Only approximate placement should be shown before a worker is selected
+- Exact location details remain private until later in the flow, as already defined in the main handoff
+
+MVP scope boundary
+Include:
+- Top-of-screen map preview
+- Approximate pin placement
+- User location marker if permission granted
+- Travel time estimate shown on cards
+
+Do not require in MVP:
+- Full route drawing
+- Turn-by-turn navigation
+- Complex clustering
+- Rich map editing controls
+- Precise geocoding of private addresses for public display
+
+Instruction to builder
+Treat this addendum as a locked clarification.
+Do not remove the map preview from Browse.
+Do not remove estimated travel time from job cards.
+If there is any conflict between this addendum and earlier lean simplifications, this addendum takes precedence for the Browse screen.
