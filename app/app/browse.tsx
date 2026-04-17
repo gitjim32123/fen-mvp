@@ -118,6 +118,7 @@ export default function BrowseScreen() {
               area={areaFromJob(job)}
               distance={distanceFromJob(job)}
               travelTime={travelTimeFromJob(job)}
+              images={(job as any).images}
               onPress={() => router.push(`/app/job/${job.id}`)}
             />
           ))}

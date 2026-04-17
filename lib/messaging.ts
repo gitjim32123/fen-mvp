@@ -39,3 +39,14 @@ export async function sendMessage(conversationId: string, jobId: string, body: s
   if (error) throw error;
   return data;
 }
+
+export async function createConversation(jobId: string, posterId: string, workerId: string) {
+  const { data, error } = await supabase
+    .from("conversations")
+    .insert([{ job_id: jobId, poster_id: posterId, worker_id: workerId }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}

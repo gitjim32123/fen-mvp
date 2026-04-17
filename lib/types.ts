@@ -16,6 +16,7 @@ export type Profile = {
   plan_tier: PlanTier;
   completed_jobs_count: number;
   is_suspended: boolean;
+  strike_count?: number;
 };
 
 export type Job = {
@@ -34,6 +35,7 @@ export type Job = {
   accepted_worker_id?: string;
   tools_supplied: boolean;
   cancel_reason?: string;
+  images?: string[];
   created_at: string;
   updated_at: string;
 };

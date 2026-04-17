@@ -1,7 +1,37 @@
+import { useState } from "react";
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { signUp } from "../../lib/auth";
 
 export default function SignUpScreen() {
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSignUp() {
+    if (!displayName.trim() || !email.trim() || !password.trim()) {
+      Alert.alert("Missing fields", "Fill in all required fields.");
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert("Password too short", "Password must be at least 6 characters.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await signUp(email.trim(), password, displayName.trim(), postcode.trim().toUpperCase());
+      Alert.alert("Check your email", "We've sent a confirmation link.", [
+        { text: "OK", onPress: () => router.replace("/auth/sign-in") },
+      ]);
+    } catch (err: any) {
+      Alert.alert("Registration failed", err?.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
@@ -9,17 +39,17 @@ export default function SignUpScreen() {
       <Text style={styles.title}>Register</Text>
       <Text style={styles.subtitle}>Create a simple account to post a job or find work nearby.</Text>
 
-      <TextInput placeholder="Display name" placeholderTextColor="#8D79AF" style={styles.input} />
-      <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" />
-      <TextInput placeholder="Postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" />
-      <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry />
+      <TextInput placeholder="Display name" placeholderTextColor="#8D79AF" style={styles.input} value={displayName} onChangeText={setDisplayName} editable={!loading} />
+      <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
+      <TextInput placeholder="Postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={postcode} onChangeText={setPostcode} editable={!loading} />
+      <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
 
       <View style={styles.notice}>
         <Text style={styles.noticeText}>Verification is required before posting, applying, or messaging.</Text>
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={() => router.replace("/app/browse")}>
-        <Text style={styles.primaryButtonText}>Create account</Text>
+      <Pressable style={[styles.primaryButton, loading && styles.disabledButton]} onPress={handleSignUp} disabled={loading}>
+        {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Create account</Text>}
       </Pressable>
 
       <Link href="/auth/sign-in" asChild>
@@ -101,6 +131,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 17,
     fontWeight: "800",
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   altText: {
     color: colors.text,

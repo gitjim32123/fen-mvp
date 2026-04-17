@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import StatusChip from "./StatusChip";
 
@@ -9,14 +10,30 @@ type Props = {
   area: string;
   distance: string;
   travelTime: string;
+  images?: string[];
   onPress?: () => void;
 };
 
-export default function JobCard({ title, budget, urgency, area, distance, travelTime, onPress }: Props) {
+export default function JobCard({ title, budget, urgency, area, distance, travelTime, images, onPress }: Props) {
+  const [imageError, setImageError] = useState(false);
+
+  const hasValidImage = images && images.length > 0 && !imageError && !!images[0];
+
   return (
     <Pressable style={styles.card} onPress={onPress}>
+      {hasValidImage ? (
+        <Image
+          source={{ uri: images[0] }}
+          style={styles.cardImage}
+          resizeMode="cover"
+          onError={() => setImageError(true)}
+        />
+      ) : (
+        <View style={styles.imagePlaceholder} />
+      )}
+
       <View style={styles.topRow}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} numberOfLines={2}>{title}</Text>
         <Text style={styles.budget}>{budget}</Text>
       </View>
 
@@ -44,12 +61,24 @@ const styles = StyleSheet.create({
     borderColor: "#231A33",
     borderWidth: 1,
     borderRadius: 18,
-    padding: 16,
-    gap: 10,
+    overflow: "hidden",
+  },
+  cardImage: {
+    width: "100%",
+    height: 140,
+    backgroundColor: "#1A1025",
+  },
+  imagePlaceholder: {
+    width: "100%",
+    height: 140,
+    backgroundColor: "#1A1025",
   },
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
+    padding: 16,
+    paddingBottom: 0,
     gap: 12,
   },
   title: {
@@ -66,6 +95,7 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 16,
     gap: 6,
   },
   meta: {
@@ -75,6 +105,7 @@ const styles = StyleSheet.create({
   travelRow: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 16,
     gap: 6,
   },
   travelText: {
@@ -83,7 +114,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   button: {
-    marginTop: 2,
+    marginTop: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
     backgroundColor: "#B56CFF",
     borderRadius: 14,
     paddingVertical: 12,

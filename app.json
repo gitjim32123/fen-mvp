@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "FEN",
-    "slug": "fen-mvp",
+    "slug": "fen",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/fen-app-icon.png",
@@ -13,13 +13,20 @@
       "backgroundColor": "#0B0714"
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "static"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "plugins": [
       "expo-video"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3c8f1c37-9acc-4eed-9db1-f32bbe2d1446"
+      }
+    },
+    "owner": "jimjam12321"
   }
 }

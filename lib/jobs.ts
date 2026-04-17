@@ -1,6 +1,60 @@
 import { supabase } from "./supabase";
 import type { Job } from "./types";
 
+export type ImageUploadResult = {
+  urls: string[];
+  failedCount: number;
+};
+
+function getStoragePath(userId: string, sessionId: string, index: number): string {
+  return `${userId}/${sessionId}/${index}`;
+}
+
+export async function uploadJobImages(
+  uris: string[],
+  sessionId: string,
+  userId: string
+): Promise<ImageUploadResult> {
+  const urls: string[] = [];
+  let failedCount = 0;
+
+  for (let i = 0; i < uris.length; i++) {
+    const uri = uris[i];
+    const path = getStoragePath(userId, sessionId, i);
+
+    try {
+      const response = await fetch(uri);
+      if (!response.ok) {
+        failedCount++;
+        continue;
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        failedCount++;
+        continue;
+      }
+      const { error: uploadError } = await supabase.storage
+        .from("job-images")
+        .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+
+      if (uploadError) {
+        failedCount++;
+        continue;
+      }
+      const { data } = supabase.storage.from("job-images").getPublicUrl(path);
+      if (data?.publicUrl) {
+        urls.push(data.publicUrl);
+      } else {
+        failedCount++;
+      }
+    } catch {
+      failedCount++;
+    }
+  }
+
+  return { urls, failedCount };
+}
+
 export async function getJobs(): Promise<Job[]> {
   const { data, error } = await supabase
     .from("jobs")
@@ -50,6 +104,7 @@ export async function postJob(formData: {
   urgency: string;
   tools_supplied?: boolean;
   preferred_start_at?: string;
+  images?: string[];
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");

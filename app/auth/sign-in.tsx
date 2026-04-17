@@ -1,7 +1,29 @@
+import { useState } from "react";
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { signIn } from "../../lib/auth";
 
 export default function SignInScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSignIn() {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing fields", "Enter your email and password.");
+      return;
+    }
+    try {
+      setLoading(true);
+      await signIn(email.trim(), password);
+      router.replace("/app");
+    } catch (err: any) {
+      Alert.alert("Sign in failed", err?.message || "Check your email and password.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
@@ -13,11 +35,11 @@ export default function SignInScreen() {
         <Text style={styles.noticeText}>Please verify your email before posting, applying, or messaging.</Text>
       </View>
 
-      <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" />
-      <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry />
+      <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
+      <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
 
-      <Pressable style={styles.primaryButton} onPress={() => router.replace("/app/browse")}>
-        <Text style={styles.primaryButtonText}>Sign in</Text>
+      <Pressable style={[styles.primaryButton, loading && styles.disabledButton]} onPress={handleSignIn} disabled={loading}>
+        {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
       </Pressable>
 
       <Pressable>
@@ -104,6 +126,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 17,
     fontWeight: "800",
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   forgotText: {
     color: colors.muted,

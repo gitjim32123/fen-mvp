@@ -52,7 +52,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="messages"
         options={{
-          href: null,
+          title: "Messages",
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
