@@ -18,7 +18,9 @@ import {
   getJob,
   leaveAcceptedJob,
   proposeJobStartTime,
+  removeJob,
   reopenJob,
+  updateJobDetails,
 } from "../../../lib/jobs";
 import {
   applyToJob,
@@ -137,6 +139,13 @@ export default function JobDetailScreen() {
   const [startTime, setStartTime] = useState("");
   const [updatingStartTime, setUpdatingStartTime] = useState(false);
   const [applicationsError, setApplicationsError] = useState<string | null>(null);
+  const [showEditJob, setShowEditJob] = useState(false);
+  const [savingJob, setSavingJob] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editBudget, setEditBudget] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editPostcode, setEditPostcode] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -157,6 +166,11 @@ export default function JobDetailScreen() {
 
         setJob(data);
         setStartTime(data.agreed_start_at || data.preferred_start_at || "");
+        setEditTitle(data.title || "");
+        setEditDescription(data.description || "");
+        setEditBudget(String(data.budget_gbp ?? ""));
+        setEditCategory(data.category || "");
+        setEditPostcode(data.postcode || "");
 
         const { data: { user } } = await supabase.auth.getUser();
         if (active) setCurrentUserId(user?.id ?? null);
@@ -198,6 +212,15 @@ export default function JobDetailScreen() {
     isAcceptedWorker &&
     job?.status === "confirm_pending" &&
     !!job?.agreed_start_at;
+  const canEditJob = isPoster && job?.status === "open";
+  const lifecycleHelp =
+    job?.status === "confirm_pending"
+      ? isAcceptedWorker
+        ? "The poster proposed a start time. Confirm it when you're ready."
+        : "Waiting for the selected worker to confirm the proposed start time."
+      : job?.status === "in_progress"
+        ? "This job has started."
+        : getStatusHelp((job as any)?.status);
 
   async function handleApply() {
     if (!jobId) return;
@@ -319,6 +342,75 @@ export default function JobDetailScreen() {
               Alert.alert("Could not leave", err?.message || "Something went wrong.");
             } finally {
               setCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function openEditJob() {
+    if (!job) return;
+    setEditTitle(job.title || "");
+    setEditDescription(job.description || "");
+    setEditBudget(String(job.budget_gbp ?? ""));
+    setEditCategory(job.category || "");
+    setEditPostcode(job.postcode || "");
+    setShowEditJob(true);
+  }
+
+  async function handleSaveJobDetails() {
+    if (!jobId || !canEditJob) return;
+    const parsedBudget = Number(editBudget);
+    if (!editTitle.trim() || !editDescription.trim() || !editBudget.trim() || !editPostcode.trim()) {
+      Alert.alert("Missing details", "Title, description, budget, and postcode are required.");
+      return;
+    }
+    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
+      Alert.alert("Invalid budget", "Enter a valid budget in GBP.");
+      return;
+    }
+
+    try {
+      setSavingJob(true);
+      const data = await updateJobDetails(jobId, {
+        title: editTitle,
+        description: editDescription,
+        budget_gbp: parsedBudget,
+        category: editCategory,
+        postcode: editPostcode,
+      });
+      setJob(data);
+      setShowEditJob(false);
+      Alert.alert("Job updated", "Your job details have been saved.");
+    } catch (err: any) {
+      Alert.alert("Could not update job", err?.message || "Something went wrong.");
+    } finally {
+      setSavingJob(false);
+    }
+  }
+
+  function handleRemoveJob() {
+    if (!jobId || !canEditJob) return;
+    Alert.alert(
+      "Remove this job?",
+      "This hides the job from your list and closes it to applicants.",
+      [
+        { text: "Keep job", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setSavingJob(true);
+              await removeJob(jobId);
+              Alert.alert("Job removed", "This job is no longer visible.", [
+                { text: "OK", onPress: () => router.replace("/app/my-jobs") },
+              ]);
+            } catch (err: any) {
+              Alert.alert("Could not remove job", err?.message || "Something went wrong.");
+            } finally {
+              setSavingJob(false);
             }
           },
         },
@@ -535,7 +627,7 @@ export default function JobDetailScreen() {
           <View style={styles.statusBadge}>
             <Text style={styles.statusText}>{toStatusLabel((job as any)?.status)}</Text>
           </View>
-          <Text style={styles.statusHelp}>{getStatusHelp((job as any)?.status)}</Text>
+          <Text style={styles.statusHelp}>{lifecycleHelp}</Text>
         </View>
 
         <View style={styles.card}>
@@ -552,6 +644,10 @@ export default function JobDetailScreen() {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Area</Text>
             <Text style={styles.detailValue}>{areaText}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Category</Text>
+            <Text style={styles.detailValue}>{job.category || "General"}</Text>
           </View>
         </View>
 
@@ -591,7 +687,7 @@ export default function JobDetailScreen() {
         {isPoster && job.accepted_worker_id && (
           <View style={styles.acceptedCard}>
             <Text style={styles.acceptedTitle}>Selected helper: {selectedWorkerName}</Text>
-            <Text style={styles.acceptedText}>{getStatusHelp((job as any)?.status)}</Text>
+            <Text style={styles.acceptedText}>{lifecycleHelp}</Text>
             <Pressable style={styles.btn} onPress={() => handleOpenConversation(job.accepted_worker_id)}>
               <Text style={styles.btnText}>Open Messages</Text>
             </Pressable>
@@ -661,10 +757,23 @@ export default function JobDetailScreen() {
           </Pressable>
         )}
 
+        {canEditJob && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Poster controls</Text>
+            <Text style={styles.bodyText}>You can edit or close this open job before selecting a helper.</Text>
+            <Pressable style={styles.secondaryButton} onPress={openEditJob}>
+              <Text style={styles.secondaryButtonText}>Edit job details</Text>
+            </Pressable>
+            <Pressable style={styles.removeButton} onPress={handleRemoveJob} disabled={savingJob}>
+              <Text style={styles.removeButtonText}>{savingJob ? "Processing..." : "Remove job"}</Text>
+            </Pressable>
+          </View>
+        )}
+
         {isAcceptedWorker && (
           <View style={styles.acceptedCard}>
             <Text style={styles.acceptedTitle}>You are the accepted helper</Text>
-            <Text style={styles.acceptedText}>{getStatusHelp((job as any)?.status)}</Text>
+            <Text style={styles.acceptedText}>{lifecycleHelp}</Text>
             <Pressable style={styles.btn} onPress={() => handleOpenConversation(currentUserId)}>
               <Text style={styles.btnText}>Open Messages</Text>
             </Pressable>
@@ -780,6 +889,86 @@ export default function JobDetailScreen() {
               <Pressable style={styles.modalCancel} onPress={() => setShowApplications(false)}>
                 <Text style={styles.modalCancelText}>Close</Text>
               </Pressable>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {showEditJob && (
+        <Modal
+          transparent
+          visible
+          animationType="fade"
+          onRequestClose={() => setShowEditJob(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Edit job</Text>
+              <TextInput
+                style={styles.modalInputSingle}
+                placeholder="Title"
+                placeholderTextColor="#8D79AF"
+                value={editTitle}
+                onChangeText={setEditTitle}
+                editable={!savingJob}
+              />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Description"
+                placeholderTextColor="#8D79AF"
+                value={editDescription}
+                onChangeText={setEditDescription}
+                multiline
+                textAlignVertical="top"
+                editable={!savingJob}
+              />
+              <TextInput
+                style={styles.modalInputSingle}
+                placeholder="Budget in GBP"
+                placeholderTextColor="#8D79AF"
+                value={editBudget}
+                onChangeText={setEditBudget}
+                keyboardType="numeric"
+                editable={!savingJob}
+              />
+              <TextInput
+                style={styles.modalInputSingle}
+                placeholder="Category"
+                placeholderTextColor="#8D79AF"
+                value={editCategory}
+                onChangeText={setEditCategory}
+                editable={!savingJob}
+              />
+              <TextInput
+                style={styles.modalInputSingle}
+                placeholder="Postcode"
+                placeholderTextColor="#8D79AF"
+                value={editPostcode}
+                onChangeText={setEditPostcode}
+                autoCapitalize="characters"
+                editable={!savingJob}
+              />
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={styles.modalCancel}
+                  onPress={() => setShowEditJob(false)}
+                  disabled={savingJob}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalSubmit, savingJob && styles.modalSubmitDisabled]}
+                  onPress={handleSaveJobDetails}
+                  disabled={savingJob}
+                >
+                  {savingJob ? (
+                    <ActivityIndicator size="small" color="#140E1D" />
+                  ) : (
+                    <Text style={styles.modalSubmitText}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
             </View>
           </View>
         </Modal>
@@ -1070,6 +1259,16 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: "top",
   },
+  modalInputSingle: {
+    backgroundColor: "#0E0A14",
+    borderWidth: 1,
+    borderColor: "#3A2B52",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#E7D9FF",
+    fontSize: 15,
+  },
   startInput: {
     backgroundColor: "#0E0A14",
     borderWidth: 1,
@@ -1226,6 +1425,19 @@ modalSubmitDisabled: {
     textAlign: "center",
     fontSize: 15,
     fontWeight: "700",
+  },
+  removeButton: {
+    borderWidth: 1,
+    borderColor: "#8E4656",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  removeButtonText: {
+    color: "#FFB0B0",
+    fontSize: 15,
+    fontWeight: "800",
   },
   emptyText: {
     color: "#A590C9",

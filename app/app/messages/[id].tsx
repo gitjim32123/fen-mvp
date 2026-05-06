@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { getMessages, sendMessage } from "../../../lib/messaging";
+import { getConversation, getMessages, sendMessage } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
-import type { Message } from "../../../lib/types";
+import type { Conversation, Message } from "../../../lib/types";
 
 export default function ConversationScreen() {
   const router = useRouter();
@@ -15,19 +15,32 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<(Conversation & { job?: { title: string }; poster?: { display_name: string }; worker?: { display_name: string } }) | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     async function load() {
-      if (!conversationId) return;
+      if (!conversationId) {
+        setErrorText("Conversation not found.");
+        setLoading(false);
+        return;
+      }
       try {
+        setErrorText(null);
         const { data: { user } } = await supabase.auth.getUser();
         if (active) setCurrentUserId(user?.id ?? null);
 
-        const data = await getMessages(conversationId);
+        const [conv, data] = await Promise.all([
+          getConversation(conversationId),
+          getMessages(conversationId),
+        ]);
+        if (active) setConversation(conv as any);
         if (active) setMessages(data);
       } catch (err: any) {
         console.log("Could not load messages", err?.message);
+        if (active) setErrorText("Could not open this conversation.");
       } finally {
         if (active) setLoading(false);
       }
@@ -40,15 +53,35 @@ export default function ConversationScreen() {
     if (!newMessage.trim() || !conversationId || !currentUserId) return;
     try {
       setSending(true);
+      setSendError(null);
       const msg = await sendMessage(conversationId, "", newMessage.trim());
       setMessages((prev) => [...prev, msg as Message]);
       setNewMessage("");
     } catch (err: any) {
+      setSendError(err?.message || "Message could not be sent.");
       Alert.alert("Could not send", err?.message || "Something went wrong.");
     } finally {
       setSending(false);
     }
   }
+
+  if (errorText) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorTitle}>Messages unavailable</Text>
+        <Text style={styles.errorText}>{errorText}</Text>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backButtonText}>Go back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const isPoster = conversation?.poster_id === currentUserId;
+  const otherName = isPoster
+    ? conversation?.worker?.display_name || "Worker"
+    : conversation?.poster?.display_name || "Poster";
+  const jobTitle = conversation?.job?.title || "Job conversation";
 
   if (loading) {
     return (
@@ -69,6 +102,8 @@ export default function ConversationScreen() {
         <Pressable onPress={() => router.back()}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
+        <Text style={styles.headerTitle}>{otherName}</Text>
+        <Text style={styles.headerSubtitle}>{jobTitle}</Text>
       </View>
 
       <FlatList
@@ -94,27 +129,30 @@ export default function ConversationScreen() {
       />
 
       <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message…"
-          placeholderTextColor="#8D79AF"
-          value={newMessage}
-          onChangeText={setNewMessage}
-          editable={!sending}
-          returnKeyType="send"
-          onSubmitEditing={handleSend}
-        />
-        <Pressable
-          style={[styles.sendButton, (!newMessage.trim() || sending) && styles.sendButtonDisabled]}
-          onPress={handleSend}
-          disabled={!newMessage.trim() || sending}
-        >
-          {sending ? (
-            <ActivityIndicator size="small" color="#140E1D" />
-          ) : (
-            <Text style={styles.sendButtonText}>Send</Text>
-          )}
-        </Pressable>
+        {sendError ? <Text style={styles.sendError}>{sendError}</Text> : null}
+        <View style={styles.composerRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type a message…"
+            placeholderTextColor="#8D79AF"
+            value={newMessage}
+            onChangeText={setNewMessage}
+            editable={!sending}
+            returnKeyType="send"
+            onSubmitEditing={handleSend}
+          />
+          <Pressable
+            style={[styles.sendButton, (!newMessage.trim() || sending) && styles.sendButtonDisabled]}
+            onPress={handleSend}
+            disabled={!newMessage.trim() || sending}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#140E1D" />
+            ) : (
+              <Text style={styles.sendButtonText}>Send</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -134,6 +172,18 @@ const styles = StyleSheet.create({
     color: "#B56CFF",
     fontSize: 16,
     fontWeight: "700",
+  },
+  headerTitle: {
+    color: "#E7D9FF",
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 10,
+  },
+  headerSubtitle: {
+    color: "#B56CFF",
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 4,
   },
   list: {
     flex: 1,
@@ -177,11 +227,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   inputRow: {
-    flexDirection: "row",
     padding: 12,
     gap: 10,
     borderTopWidth: 1,
     borderTopColor: "#231A33",
+  },
+  composerRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  sendError: {
+    color: "#FFB0B0",
+    fontSize: 13,
   },
   input: {
     flex: 1,
@@ -213,10 +270,34 @@ const styles = StyleSheet.create({
     backgroundColor: "#0E0A14",
     alignItems: "center",
     justifyContent: "center",
+    padding: 24,
   },
   loadingText: {
     color: "#CBB8F1",
     marginTop: 12,
     fontSize: 15,
+  },
+  errorTitle: {
+    color: "#E7D9FF",
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  errorText: {
+    color: "#CBB8F1",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 18,
+  },
+  backButton: {
+    backgroundColor: "#B56CFF",
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  backButtonText: {
+    color: "#140E1D",
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

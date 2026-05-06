@@ -119,11 +119,61 @@ export async function postJob(formData: {
   return data;
 }
 
+export async function updateJobDetails(
+  id: string,
+  updates: {
+    title: string;
+    description: string;
+    budget_gbp: number;
+    category?: string;
+    postcode: string;
+  }
+) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const postcode = updates.postcode.trim().toUpperCase();
+  const postcodeDistrict = postcode.split(" ")[0] || postcode;
+
+  const { data, error } = await supabase
+    .from("jobs")
+    .update({
+      title: updates.title.trim(),
+      description: updates.description.trim(),
+      budget_gbp: updates.budget_gbp,
+      category: updates.category?.trim() || null,
+      postcode,
+      postcode_district: postcodeDistrict,
+    })
+    .eq("id", id)
+    .eq("poster_id", user.id)
+    .eq("status", "open")
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function cancelJob(id: string, reason: string) {
   const { error } = await supabase
     .from("jobs")
     .update({ status: "cancelled", cancel_reason: reason })
     .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function removeJob(id: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const { error } = await supabase
+    .from("jobs")
+    .update({ status: "cancelled", deleted_at: new Date().toISOString(), cancel_reason: "Removed by poster" })
+    .eq("id", id)
+    .eq("poster_id", user.id)
+    .eq("status", "open");
 
   if (error) throw error;
 }

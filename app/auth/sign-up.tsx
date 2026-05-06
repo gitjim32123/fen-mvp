@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
 import { signUp } from "../../lib/auth";
 
@@ -38,36 +38,41 @@ export default function SignUpScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
+    <KeyboardAvoidingView
+      style={styles.keyboard}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView style={styles.screen} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
 
-      <Text style={styles.title}>Register</Text>
-      <Text style={styles.subtitle}>Create a simple account to post a job or find work nearby.</Text>
+        <Text style={styles.title}>Register</Text>
+        <Text style={styles.subtitle}>Create a simple account to post a job or find work nearby.</Text>
 
-      <TextInput placeholder="Display name" placeholderTextColor="#8D79AF" style={styles.input} value={displayName} onChangeText={setDisplayName} editable={!loading} />
-      <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
-      <TextInput placeholder="Postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={postcode} onChangeText={setPostcode} editable={!loading} />
-      <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
-      {passwordTooShort ? (
-        <Text style={styles.validationText}>Password must be at least 6 characters.</Text>
-      ) : null}
+        <TextInput placeholder="Display name" placeholderTextColor="#8D79AF" style={styles.input} value={displayName} onChangeText={setDisplayName} editable={!loading} />
+        <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
+        <TextInput placeholder="Postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={postcode} onChangeText={setPostcode} editable={!loading} />
+        <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
+        {passwordTooShort ? (
+          <Text style={styles.validationText}>Password must be at least 6 characters.</Text>
+        ) : null}
 
-      <View style={styles.notice}>
-        <Text style={styles.noticeText}>Verification is required before posting, applying, or messaging.</Text>
-      </View>
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>Verification is required before posting, applying, or messaging.</Text>
+        </View>
 
-      {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+        {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
 
-      <Pressable style={[styles.primaryButton, (loading || passwordTooShort) && styles.disabledButton]} onPress={handleSignUp} disabled={loading || passwordTooShort}>
-        {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Create account</Text>}
-      </Pressable>
-
-      <Link href="/auth/sign-in" asChild>
-        <Pressable>
-          <Text style={styles.altText}>Already have an account? Sign in</Text>
+        <Pressable style={[styles.primaryButton, (loading || passwordTooShort) && styles.disabledButton]} onPress={handleSignUp} disabled={loading || passwordTooShort}>
+          {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Create account</Text>}
         </Pressable>
-      </Link>
-    </View>
+
+        <Link href="/auth/sign-in" asChild>
+          <Pressable>
+            <Text style={styles.altText}>Already have an account? Sign in</Text>
+          </Pressable>
+        </Link>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -83,9 +88,16 @@ const colors = {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  keyboard: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  screen: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  container: {
+    flexGrow: 1,
     padding: 24,
     justifyContent: "center",
     alignItems: "center",

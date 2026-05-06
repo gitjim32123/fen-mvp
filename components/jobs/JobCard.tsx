@@ -7,6 +7,8 @@ type Props = {
   title: string;
   budget: string;
   urgency: "Need now" | "Today" | "Flexible";
+  status?: string;
+  category?: string;
   area: string;
   distance: string;
   travelTime: string;
@@ -14,7 +16,7 @@ type Props = {
   onPress?: () => void;
 };
 
-export default function JobCard({ title, budget, urgency, area, distance, travelTime, images, onPress }: Props) {
+export default function JobCard({ title, budget, urgency, status = "Open", category, area, distance, travelTime, images, onPress }: Props) {
   const [imageError, setImageError] = useState(false);
 
   const hasValidImage = images && images.length > 0 && !imageError && !!images[0];
@@ -37,10 +39,15 @@ export default function JobCard({ title, budget, urgency, area, distance, travel
         <Text style={styles.budget}>{budget}</Text>
       </View>
 
-      <StatusChip label={urgency} />
+      <View style={styles.chipRow}>
+        <StatusChip label={status as any} />
+        <StatusChip label={urgency} />
+      </View>
+
+      <Text style={styles.category}>{category || "General"}</Text>
 
       <View style={styles.metaRow}>
-        <Text style={styles.meta}>{area} · {distance}</Text>
+        <Text style={styles.meta}>{area} - {distance}</Text>
       </View>
 
       <View style={styles.travelRow}>
@@ -91,6 +98,18 @@ const styles = StyleSheet.create({
     color: "#B56CFF",
     fontSize: 18,
     fontWeight: "800",
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  category: {
+    color: "#A590C9",
+    fontSize: 13,
+    fontWeight: "700",
+    paddingHorizontal: 16,
   },
   metaRow: {
     flexDirection: "row",

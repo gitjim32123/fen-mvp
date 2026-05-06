@@ -5,8 +5,17 @@ export async function applyToJob(jobId: string, message?: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
+  const { data: job, error: jobError } = await supabase
+    .from("jobs")
+    .select("poster_id, status")
+    .eq("id", jobId)
+    .single();
+  if (jobError) throw jobError;
+  if (job?.poster_id === user.id) throw new Error("You can't apply to your own job.");
+  if (job?.status !== "open") throw new Error("This job is no longer open for applications.");
+
   const canApply = await supabase.rpc("can_apply_to_job", { p_job_id: jobId });
-  if (!canApply.data) throw new Error("Application limit reached or job unavailable.");
+  if (!canApply.data) throw new Error("This job is no longer available for applications.");
 
   const { data, error } = await supabase
     .from("applications")
@@ -14,7 +23,12 @@ export async function applyToJob(jobId: string, message?: string) {
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === "23505" || error.message?.toLowerCase().includes("duplicate")) {
+      throw new Error("You've already applied for this job.");
+    }
+    throw error;
+  }
   return data;
 }
 

@@ -15,6 +15,17 @@ function budgetFromJob(job: Job): string {
   return `£${job.budget_gbp}`;
 }
 
+function statusFromJob(job: Job): string {
+  switch (job.status) {
+    case "held": return "Held";
+    case "confirm_pending": return "Confirm pending";
+    case "in_progress": return "In progress";
+    case "completed": return "Completed";
+    case "cancelled": return "Cancelled";
+    default: return "Open";
+  }
+}
+
 function areaFromJob(job: Job): string {
   return (job as any).postcode_district || job.postcode || "Unknown";
 }
@@ -115,6 +126,8 @@ export default function BrowseScreen() {
               title={job.title}
               budget={budgetFromJob(job)}
               urgency={urgencyFromJob(job)}
+              status={statusFromJob(job)}
+              category={job.category}
               area={areaFromJob(job)}
               distance={distanceFromJob(job)}
               travelTime={travelTimeFromJob(job)}

@@ -1,7 +1,18 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
 import { signIn } from "../../lib/auth";
+
+function getSignInErrorMessage(error: any) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("invalid") || message.includes("credentials") || message.includes("password")) {
+    return "Email or password is incorrect.";
+  }
+  if (message.includes("email") && message.includes("confirm")) {
+    return "Check your email and confirm your account before signing in.";
+  }
+  return "Could not sign in. Check your details and try again.";
+}
 
 export default function SignInScreen() {
   const [email, setEmail] = useState("");
@@ -18,40 +29,45 @@ export default function SignInScreen() {
       await signIn(email.trim(), password);
       router.replace("/app");
     } catch (err: any) {
-      Alert.alert("Sign in failed", err?.message || "Check your email and password.");
+      Alert.alert("Sign in failed", getSignInErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <View style={styles.container}>
-      <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
+    <KeyboardAvoidingView
+      style={styles.keyboard}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView style={styles.screen} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
 
-      <Text style={styles.title}>Sign in</Text>
-      <Text style={styles.subtitle}>Use your email and password to continue.</Text>
+        <Text style={styles.title}>Sign in</Text>
+        <Text style={styles.subtitle}>Use your email and password to continue.</Text>
 
-      <View style={styles.notice}>
-        <Text style={styles.noticeText}>Please verify your email before posting, applying, or messaging.</Text>
-      </View>
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>Please verify your email before posting, applying, or messaging.</Text>
+        </View>
 
-      <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
-      <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
+        <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
+        <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
 
-      <Pressable style={[styles.primaryButton, loading && styles.disabledButton]} onPress={handleSignIn} disabled={loading}>
-        {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
-      </Pressable>
-
-      <Pressable>
-        <Text style={styles.forgotText}>Forgot password</Text>
-      </Pressable>
-
-      <Link href="/auth/sign-up" asChild>
-        <Pressable>
-          <Text style={styles.altText}>Need an account? Register</Text>
+        <Pressable style={[styles.primaryButton, loading && styles.disabledButton]} onPress={handleSignIn} disabled={loading}>
+          {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
         </Pressable>
-      </Link>
-    </View>
+
+        <Pressable>
+          <Text style={styles.forgotText}>Forgot password</Text>
+        </Pressable>
+
+        <Link href="/auth/sign-up" asChild>
+          <Pressable>
+            <Text style={styles.altText}>Need an account? Register</Text>
+          </Pressable>
+        </Link>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -67,9 +83,16 @@ const colors = {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  keyboard: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  screen: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  container: {
+    flexGrow: 1,
     padding: 24,
     justifyContent: "center",
     alignItems: "center",
