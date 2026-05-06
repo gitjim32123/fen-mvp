@@ -147,6 +147,25 @@ export async function leaveAcceptedJob(id: string, workerId: string) {
   if (error) throw error;
 }
 
+export async function proposeJobStartTime(id: string, startTime: string) {
+  const { error } = await supabase
+    .from("jobs")
+    .update({ status: "confirm_pending", agreed_start_at: startTime })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function confirmJobStartTime(id: string, workerId: string) {
+  const { error } = await supabase
+    .from("jobs")
+    .update({ status: "in_progress" })
+    .eq("id", id)
+    .eq("accepted_worker_id", workerId);
+
+  if (error) throw error;
+}
+
 export async function getMyPostedJobs(): Promise<Job[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
