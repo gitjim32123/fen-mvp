@@ -9,8 +9,12 @@ export default function SignUpScreen() {
   const [postcode, setPostcode] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const passwordTooShort = password.length > 0 && password.length < 6;
 
   async function handleSignUp() {
+    setSuccessMessage(null);
     if (!displayName.trim() || !email.trim() || !password.trim()) {
       Alert.alert("Missing fields", "Fill in all required fields.");
       return;
@@ -22,6 +26,7 @@ export default function SignUpScreen() {
     try {
       setLoading(true);
       await signUp(email.trim(), password, displayName.trim(), postcode.trim().toUpperCase());
+      setSuccessMessage("Account created. Check your email for the confirmation link.");
       Alert.alert("Check your email", "We've sent a confirmation link.", [
         { text: "OK", onPress: () => router.replace("/auth/sign-in") },
       ]);
@@ -43,12 +48,17 @@ export default function SignUpScreen() {
       <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
       <TextInput placeholder="Postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={postcode} onChangeText={setPostcode} editable={!loading} />
       <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
+      {passwordTooShort ? (
+        <Text style={styles.validationText}>Password must be at least 6 characters.</Text>
+      ) : null}
 
       <View style={styles.notice}>
         <Text style={styles.noticeText}>Verification is required before posting, applying, or messaging.</Text>
       </View>
 
-      <Pressable style={[styles.primaryButton, loading && styles.disabledButton]} onPress={handleSignUp} disabled={loading}>
+      {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+
+      <Pressable style={[styles.primaryButton, (loading || passwordTooShort) && styles.disabledButton]} onPress={handleSignUp} disabled={loading || passwordTooShort}>
         {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Create account</Text>}
       </Pressable>
 
@@ -119,6 +129,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     lineHeight: 20,
+  },
+  validationText: {
+    color: "#FFB0B0",
+    fontSize: 13,
+    alignSelf: "stretch",
+  },
+  successText: {
+    color: "#BFE8C8",
+    fontSize: 14,
+    lineHeight: 20,
+    alignSelf: "stretch",
   },
   primaryButton: {
     backgroundColor: colors.accent,

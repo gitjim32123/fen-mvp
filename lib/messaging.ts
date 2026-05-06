@@ -26,13 +26,30 @@ export async function getMessages(conversationId: string): Promise<Message[]> {
   return data ?? [];
 }
 
+export async function getConversation(conversationId: string): Promise<Conversation> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("*, job:jobs(title), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
+    .eq("id", conversationId)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function sendMessage(conversationId: string, jobId: string, body: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
+  let resolvedJobId = jobId;
+  if (!resolvedJobId) {
+    const conversation = await getConversation(conversationId);
+    resolvedJobId = conversation.job_id;
+  }
+
   const { data, error } = await supabase
     .from("messages")
-    .insert([{ conversation_id: conversationId, job_id: jobId, sender_id: user.id, body }])
+    .insert([{ conversation_id: conversationId, job_id: resolvedJobId, sender_id: user.id, body }])
     .select()
     .single();
 
@@ -40,7 +57,18 @@ export async function sendMessage(conversationId: string, jobId: string, body: s
   return data;
 }
 
-export async function createConversation(jobId: string, posterId: string, workerId: string) {
+export async function createOrOpenConversation(jobId: string, posterId: string, workerId: string) {
+  const { data: existing, error: findError } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("job_id", jobId)
+    .eq("poster_id", posterId)
+    .eq("worker_id", workerId)
+    .maybeSingle();
+
+  if (findError) throw findError;
+  if (existing) return existing;
+
   const { data, error } = await supabase
     .from("conversations")
     .insert([{ job_id: jobId, poster_id: posterId, worker_id: workerId }])
@@ -50,3 +78,5 @@ export async function createConversation(jobId: string, posterId: string, worker
   if (error) throw error;
   return data;
 }
+
+export const createConversation = createOrOpenConversation;

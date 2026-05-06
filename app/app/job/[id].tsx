@@ -12,10 +12,14 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { getJob } from "../../../lib/jobs";
-import { applyToJob, getApplicationsForJob, selectWorker } from "../../../lib/applications";
-import { getConversations, createConversation } from "../../../lib/messaging";
-import { cancelJob } from "../../../lib/jobs";
+import { cancelJob, getJob, leaveAcceptedJob, reopenJob } from "../../../lib/jobs";
+import {
+  applyToJob,
+  getApplicationsForJob,
+  reopenApplicationsForJob,
+  selectWorker,
+} from "../../../lib/applications";
+import { createOrOpenConversation } from "../../../lib/messaging";
 import {
   REPORT_REASONS,
   getReportCount,
@@ -48,6 +52,13 @@ function formatBudget(value?: number | string) {
   if (typeof value === "number") return `£${value}`;
   if (typeof value === "string" && value.trim()) return `£${value}`;
   return "Budget not set";
+}
+
+function formatAppliedAt(value?: string) {
+  if (!value) return "Recently";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Recently";
+  return date.toLocaleDateString();
 }
 
 export default function JobDetailScreen() {
@@ -88,13 +99,18 @@ export default function JobDetailScreen() {
         setLoading(true);
         setErrorText(null);
 
-const data = await getJob(jobId);
+        const data = await getJob(jobId);
         if (!active) return;
 
         setJob(data);
 
         const { data: { user } } = await supabase.auth.getUser();
         if (active) setCurrentUserId(user?.id ?? null);
+
+        if (user?.id && data.poster_id === user.id) {
+          const jobApplications = await getApplicationsForJob(jobId);
+          if (active) setApplications(jobApplications);
+        }
 
         const count = await getReportCount(jobId);
         if (active) setReportCount(count);
@@ -112,7 +128,11 @@ const data = await getJob(jobId);
     };
   }, [jobId]);
 
-const areaText = (job as any)?.postcode_district || job?.postcode || "Area not available";
+  const areaText = (job as any)?.postcode_district || job?.postcode || "Area not available";
+  const selectedApplication = applications.find((app) => app.worker_id === job?.accepted_worker_id);
+  const selectedWorkerName =
+    selectedApplication?.worker?.display_name ||
+    (currentUserId === job?.accepted_worker_id ? "you" : "Selected helper");
 
   async function handleApply() {
     if (!jobId) return;
@@ -158,12 +178,12 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
             try {
               setAccepting(true);
               await selectWorker(jobId, workerId);
-              await createConversation(jobId, currentUserId, workerId);
+              const conversation = await createOrOpenConversation(jobId, currentUserId, workerId);
               const data = await getJob(jobId);
               setJob(data);
               await loadApplications();
               Alert.alert("Worker accepted!", "You can now message each other to finalise the job.", [
-                { text: "OK" },
+                { text: "Open messages", onPress: () => router.push(`/app/messages/${conversation.id}`) },
               ]);
             } catch (err: any) {
               Alert.alert("Could not accept", err?.message || "Something went wrong.");
@@ -217,11 +237,8 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
           onPress: async () => {
             try {
               setCancelling(true);
-              const { error } = await supabase
-                .from("jobs")
-                .update({ status: "open", accepted_worker_id: null })
-                .eq("id", jobId);
-              if (error) throw error;
+              await leaveAcceptedJob(jobId, currentUserId);
+              await reopenApplicationsForJob(jobId, currentUserId);
               const data = await getJob(jobId);
               setJob(data);
               Alert.alert("Left job", "You have been removed from this job.");
@@ -237,7 +254,7 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
   }
 
   function handleReport() {
-    const buttons = REPORT_REASONS.map((r) => ({ text: r }));
+    const buttons: { text: string; style?: "cancel" }[] = REPORT_REASONS.map((r) => ({ text: r }));
     buttons.push({ text: "Cancel", style: "cancel" as const });
 
     Alert.alert(
@@ -248,6 +265,45 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
         onPress: b.text === "Cancel" ? undefined : () => handleReportReason(b.text),
       }))
     );
+  }
+
+  function handleReopenJob() {
+    if (!jobId || currentUserId !== job?.poster_id || job?.status !== "cancelled") return;
+    Alert.alert(
+      "Reopen this job?",
+      "This will make the job visible to applicants again and clear any accepted worker.",
+      [
+        { text: "Keep cancelled", style: "cancel" },
+        {
+          text: "Reopen",
+          onPress: async () => {
+            try {
+              setCancelling(true);
+              await reopenJob(jobId);
+              await reopenApplicationsForJob(jobId);
+              const data = await getJob(jobId);
+              setJob(data);
+              await loadApplications();
+              Alert.alert("Job reopened", "This job is open for applications again.");
+            } catch (err: any) {
+              Alert.alert("Could not reopen", err?.message || "Something went wrong.");
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleOpenConversation(workerId?: string) {
+    if (!jobId || !job?.poster_id || !workerId) return;
+    try {
+      const conversation = await createOrOpenConversation(jobId, job.poster_id, workerId);
+      router.push(`/app/messages/${conversation.id}`);
+    } catch (err: any) {
+      Alert.alert("Could not open messages", err?.message || "Something went wrong.");
+    }
   }
 
   function handleReportReason(reason: string) {
@@ -408,14 +464,30 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
           </Text>
         </View>
 
-{reportCount >= 3 && (
+        {reportCount >= 3 && (
           <View style={styles.flaggedBanner}>
             <Text style={styles.flaggedText}>This job has been flagged for review</Text>
           </View>
         )}
 
-        {currentUserId === job?.poster_id && (job as any)?.status === "open" && (
-          <Pressable style={styles.btn} onPress={() => { loadApplications(); setShowApplications(true); }}>
+        {currentUserId === job?.poster_id && job.accepted_worker_id && (
+          <View style={styles.acceptedCard}>
+            <Text style={styles.acceptedTitle}>Selected helper: {selectedWorkerName}</Text>
+            <Text style={styles.acceptedText}>This job is held while you arrange the details.</Text>
+            <Pressable style={styles.btn} onPress={() => handleOpenConversation(job.accepted_worker_id)}>
+              <Text style={styles.btnText}>Open Messages</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {currentUserId === job?.poster_id && (
+          <Pressable
+            style={styles.btn}
+            onPress={() => {
+              loadApplications();
+              setShowApplications(true);
+            }}
+          >
             <Text style={styles.btnText}>View applications ({applications.length})</Text>
           </Pressable>
         )}
@@ -424,13 +496,13 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
           <View style={styles.acceptedCard}>
             <Text style={styles.acceptedTitle}>You are the accepted helper</Text>
             <Text style={styles.acceptedText}>Message the poster to arrange the details.</Text>
-            <Pressable style={styles.btn} onPress={() => router.push("/app/messages")}>
-              <Text style={styles.btnText}>Go to Messages</Text>
+            <Pressable style={styles.btn} onPress={() => handleOpenConversation(currentUserId)}>
+              <Text style={styles.btnText}>Open Messages</Text>
             </Pressable>
           </View>
         )}
 
-{currentUserId !== job?.poster_id && currentUserId !== job?.accepted_worker_id && (
+        {currentUserId !== job?.poster_id && currentUserId !== job?.accepted_worker_id && (
           <Pressable
             style={[styles.btn, ((job as any)?.status !== "open" || applying) && styles.btnDisabled]}
             disabled={(job as any)?.status !== "open" || applying}
@@ -446,6 +518,12 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
           </Pressable>
         )}
 
+        {currentUserId === job?.poster_id && (job as any)?.status === "cancelled" && (
+          <Pressable style={styles.btn} onPress={handleReopenJob} disabled={cancelling}>
+            <Text style={styles.btnText}>{cancelling ? "Processing..." : "Reopen job"}</Text>
+          </Pressable>
+        )}
+
         {(currentUserId === job?.poster_id || currentUserId === job?.accepted_worker_id) && (job as any)?.status !== "cancelled" && (
           <Pressable style={styles.cancelButton} onPress={currentUserId === job?.poster_id ? handleCancelJob : handleLeaveJob} disabled={cancelling}>
             <Text style={styles.cancelButtonText}>{cancelling ? "Processing..." : currentUserId === job?.poster_id ? "Cancel job" : "Leave job"}</Text>
@@ -454,8 +532,76 @@ const areaText = (job as any)?.postcode_district || job?.postcode || "Area not a
 
         <Pressable style={styles.reportBtn} onPress={handleReport}>
           <Text style={styles.reportBtnText}>Report this job</Text>
-</Pressable>
+        </Pressable>
       </ScrollView>
+
+      {showApplications && (
+        <Modal
+          transparent
+          visible
+          animationType="fade"
+          onRequestClose={() => setShowApplications(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Applications</Text>
+
+              {applicationsLoading ? (
+                <ActivityIndicator size="small" color="#B56CFF" />
+              ) : applications.length === 0 ? (
+                <Text style={styles.emptyText}>No applications yet.</Text>
+              ) : (
+                <ScrollView style={styles.applicationsList}>
+                  {applications.map((application) => {
+                    const workerName = application.worker?.display_name || "Applicant";
+                    const isSelected = application.status === "selected" || application.worker_id === job.accepted_worker_id;
+                    return (
+                      <View key={application.id} style={styles.applicationCard}>
+                        <View style={styles.applicationHeader}>
+                          <View>
+                            <Text style={styles.applicationName}>{workerName}</Text>
+                            <Text style={styles.applicationMeta}>
+                              {formatAppliedAt(application.created_at)}
+                              {application.worker?.completed_jobs_count != null
+                                ? ` - ${application.worker.completed_jobs_count} completed`
+                                : ""}
+                            </Text>
+                          </View>
+                          {isSelected ? <Text style={styles.alreadySelected}>Selected</Text> : null}
+                        </View>
+
+                        {application.message ? (
+                          <Text style={styles.applicationMessage}>{application.message}</Text>
+                        ) : null}
+
+                        {isSelected ? (
+                          <Pressable style={styles.acceptButton} onPress={() => handleOpenConversation(application.worker_id)}>
+                            <Text style={styles.acceptButtonText}>Open Messages</Text>
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            style={[styles.acceptButton, accepting && styles.btnDisabled]}
+                            onPress={() => handleAcceptWorker(application.worker_id, workerName)}
+                            disabled={accepting || (job as any)?.status === "cancelled"}
+                          >
+                            <Text style={styles.acceptButtonText}>
+                              {accepting ? "Accepting..." : (job as any)?.status === "cancelled" ? "Job cancelled" : "Accept"}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              <Pressable style={styles.modalCancel} onPress={() => setShowApplications(false)}>
+                <Text style={styles.modalCancelText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {reportModalReason && (
         <Modal

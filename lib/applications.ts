@@ -36,6 +36,22 @@ export async function selectWorker(jobId: string, workerId: string) {
   if (error) throw error;
 }
 
+export async function reopenApplicationsForJob(jobId: string, workerId?: string) {
+  let query = supabase
+    .from("applications")
+    .update({ status: "applied" })
+    .eq("job_id", jobId);
+
+  if (workerId) {
+    query = query.eq("worker_id", workerId);
+  } else {
+    query = query.eq("status", "selected");
+  }
+
+  const { error } = await query;
+  if (error) throw error;
+}
+
 export async function getMyApplications(): Promise<Application[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");

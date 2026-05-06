@@ -128,6 +128,25 @@ export async function cancelJob(id: string, reason: string) {
   if (error) throw error;
 }
 
+export async function reopenJob(id: string) {
+  const { error } = await supabase
+    .from("jobs")
+    .update({ status: "open", accepted_worker_id: null, cancel_reason: null })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function leaveAcceptedJob(id: string, workerId: string) {
+  const { error } = await supabase
+    .from("jobs")
+    .update({ status: "open", accepted_worker_id: null })
+    .eq("id", id)
+    .eq("accepted_worker_id", workerId);
+
+  if (error) throw error;
+}
+
 export async function getMyPostedJobs(): Promise<Job[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
