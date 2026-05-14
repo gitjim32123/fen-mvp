@@ -1,7 +1,21 @@
 import { StyleSheet, Text, View } from "react-native";
+import { theme } from "../ui/theme";
 
 type Props = {
-  label: "Open" | "Held" | "Confirm pending" | "In progress" | "Completed" | "Cancelled" | "Need now" | "Today" | "Flexible";
+  label:
+    | "Open"
+    | "Held"
+    | "Confirm pending"
+    | "In progress"
+    | "Completed"
+    | "Cancelled"
+    | "Need now"
+    | "Today"
+    | "Flexible"
+    | "Applied"
+    | "Rejected"
+    | "Selected"
+    | "Withdrawn";
 };
 
 export default function StatusChip({ label }: Props) {
@@ -17,17 +31,24 @@ export default function StatusChip({ label }: Props) {
 function getTone(label: Props["label"]) {
   switch (label) {
     case "Open":
-      return { bg: "#20172E", border: "#5B3A87", text: "#E7D9FF" };
+      return { bg: "#10231A", border: theme.colors.success, text: "#D7F5DE" };
     case "Held":
-      return { bg: "#2B1E15", border: "#8B5A2B", text: "#FFDDB7" };
+      return { bg: "#241C10", border: theme.colors.warning, text: "#FFE0B8" };
     case "Confirm pending":
-      return { bg: "#182033", border: "#3D5A93", text: "#D6E3FF" };
+      return { bg: theme.colors.infoBg, border: theme.colors.info, text: "#D6E3FF" };
     case "In progress":
-      return { bg: "#15251E", border: "#2E7A59", text: "#D0F5E2" };
+      return { bg: "#101F22", border: "#48C7D8", text: "#D9FAFF" };
     case "Completed":
-      return { bg: "#16231A", border: "#3E8F58", text: "#D7F5DE" };
+      return { bg: theme.colors.successBg, border: theme.colors.success, text: "#D7F5DE" };
     case "Cancelled":
-      return { bg: "#2B161B", border: "#8E4656", text: "#FFD8DE" };
+      return { bg: theme.colors.dangerBg, border: theme.colors.danger, text: "#FFD8DE" };
+    case "Applied":
+      return { bg: theme.colors.infoBg, border: theme.colors.info, text: "#D6E3FF" };
+    case "Selected":
+      return { bg: "#241C10", border: theme.colors.warning, text: "#FFE0B8" };
+    case "Rejected":
+    case "Withdrawn":
+      return { bg: "#1B1826", border: "#4E4467", text: "#D8CCEF" };
     case "Need now":
       return { bg: "#2A1E3D", border: "#B56CFF", text: "#F0E2FF" };
     case "Today":

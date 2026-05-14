@@ -7,8 +7,9 @@ export async function getConversations(): Promise<Conversation[]> {
 
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, job:jobs(title), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
+    .select("*, job:jobs(title,status), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
     .or(`poster_id.eq.${user.id},worker_id.eq.${user.id}`)
+    .eq("is_archived", false)
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
@@ -29,7 +30,7 @@ export async function getMessages(conversationId: string): Promise<Message[]> {
 export async function getConversation(conversationId: string): Promise<Conversation> {
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, job:jobs(title), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
+    .select("*, job:jobs(title,status), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
     .eq("id", conversationId)
     .single();
 
@@ -41,10 +42,14 @@ export async function sendMessage(conversationId: string, jobId: string, body: s
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
-  let resolvedJobId = jobId;
-  if (!resolvedJobId) {
-    const conversation = await getConversation(conversationId);
-    resolvedJobId = conversation.job_id;
+  const conversation = await getConversation(conversationId) as Conversation & { job?: { status?: string } };
+  const resolvedJobId = jobId || conversation.job_id;
+  const jobStatus = conversation.job?.status;
+  if (jobStatus === "cancelled" || jobStatus === "completed") {
+    throw new Error("This conversation is read-only because the job is no longer active.");
+  }
+  if (conversation.is_archived) {
+    throw new Error("This conversation has been archived and is read-only.");
   }
 
   const { data, error } = await supabase
@@ -54,6 +59,11 @@ export async function sendMessage(conversationId: string, jobId: string, body: s
     .single();
 
   if (error) throw error;
+  await supabase
+    .from("conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .or(`poster_id.eq.${user.id},worker_id.eq.${user.id}`);
   return data;
 }
 
@@ -80,3 +90,20 @@ export async function createOrOpenConversation(jobId: string, posterId: string, 
 }
 
 export const createConversation = createOrOpenConversation;
+
+export async function archiveConversation(conversationId: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({ is_archived: true })
+    .eq("id", conversationId)
+    .or(`poster_id.eq.${user.id},worker_id.eq.${user.id}`)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("No archiveable conversation was found for your account.");
+  return data;
+}

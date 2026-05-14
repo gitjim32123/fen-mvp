@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { getMyPostedJobs } from "../../lib/jobs";
-import { getMyApplications } from "../../lib/applications";
+import { cancelJob, clearOldPostedJobs, completeJob, getMyPostedJobs, leaveAcceptedJob, removeJob } from "../../lib/jobs";
+import { getApplicationCountsForJobs, getMyApplications, withdrawApplication } from "../../lib/applications";
+import { createOrOpenConversation } from "../../lib/messaging";
+import { supabase } from "../../lib/supabase";
 import type { Job, Application } from "../../lib/types";
 import StatusChip from "../../components/jobs/StatusChip";
+import { SignInRequired } from "../../components/ui/Premium";
 
 function toStatusLabel(status: Job["status"] | Application["status"]) {
   switch (status) {
@@ -22,7 +25,39 @@ function toStatusLabel(status: Job["status"] | Application["status"]) {
   }
 }
 
-function JobRow({ title, budget, status, jobId, isPosted }: { title: string; budget: string; status: string; jobId: string; isPosted: boolean }) {
+function JobRow({
+  title,
+  budget,
+  status,
+  jobId,
+  isPosted,
+  applicants = 0,
+  rawStatus,
+  busy,
+  onCancel,
+  onRemove,
+  onWithdraw,
+  onLeave,
+  onOpenChat,
+  onComplete,
+}: {
+  title: string;
+  budget: string;
+  status: string;
+  jobId: string;
+  isPosted: boolean;
+  applicants?: number;
+  rawStatus?: string;
+  busy?: boolean;
+  onCancel?: () => void;
+  onRemove?: () => void;
+  onWithdraw?: () => void;
+  onLeave?: () => void;
+  onOpenChat?: () => void;
+  onComplete?: () => void;
+}) {
+  const canCancel = isPosted && ["open", "held", "confirm_pending", "in_progress"].includes(rawStatus || "");
+  const canRemove = isPosted && ["open", "cancelled", "completed"].includes(rawStatus || "");
   return (
     <View style={styles.card}>
       <View style={styles.rowTop}>
@@ -30,9 +65,41 @@ function JobRow({ title, budget, status, jobId, isPosted }: { title: string; bud
         <Text style={styles.cardBudget}>{budget}</Text>
       </View>
       <StatusChip label={status as any} />
+      {isPosted ? <Text style={styles.applicantText}>{applicants} applicant{applicants === 1 ? "" : "s"}</Text> : null}
+      <Text style={styles.statusHelp}>{status === "Open" ? "Open jobs can be edited or cancelled before a helper is selected." : "Open the job for next safe action."}</Text>
       <Pressable style={styles.actionButton} onPress={() => router.push(`/app/job/${jobId}`)}>
         <Text style={styles.actionButtonText}>{isPosted ? "Manage job" : "View details"}</Text>
       </Pressable>
+      {onOpenChat ? (
+        <Pressable style={styles.actionButton} onPress={onOpenChat} disabled={busy}>
+          <Text style={styles.actionButtonText}>{busy ? "Opening..." : "Open chat"}</Text>
+        </Pressable>
+      ) : null}
+      {onComplete ? (
+        <Pressable style={styles.actionButton} onPress={onComplete} disabled={busy}>
+          <Text style={styles.actionButtonText}>{busy ? "Processing..." : "Complete job"}</Text>
+        </Pressable>
+      ) : null}
+      {canCancel ? (
+        <Pressable style={styles.cancelButton} onPress={onCancel} disabled={busy}>
+          <Text style={styles.cancelButtonText}>{busy ? "Processing..." : "Cancel job"}</Text>
+        </Pressable>
+      ) : null}
+      {canRemove ? (
+        <Pressable style={styles.removeButton} onPress={onRemove} disabled={busy}>
+          <Text style={styles.removeButtonText}>{busy ? "Processing..." : "Remove from list"}</Text>
+        </Pressable>
+      ) : null}
+      {onWithdraw ? (
+        <Pressable style={styles.removeButton} onPress={onWithdraw} disabled={busy}>
+          <Text style={styles.removeButtonText}>{busy ? "Processing..." : "Withdraw application"}</Text>
+        </Pressable>
+      ) : null}
+      {onLeave ? (
+        <Pressable style={styles.cancelButton} onPress={onLeave} disabled={busy}>
+          <Text style={styles.cancelButtonText}>{busy ? "Processing..." : "Leave job"}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -42,30 +109,270 @@ export default function MyJobsScreen() {
   const [appliedJobs, setAppliedJobs] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [applicationCounts, setApplicationCounts] = useState<Record<string, number>>({});
+  const [clearingOld, setClearingOld] = useState(false);
+  const [busyJobId, setBusyJobId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const activePostedJobs = postedJobs.filter((job) => !["completed", "cancelled"].includes(job.status));
+  const appliedActiveJobs = appliedJobs.filter((app) => app.status === "applied" && !["completed", "cancelled"].includes((app as any).job?.status));
+  const selectedActiveJobs = appliedJobs.filter((app) => {
+    const job = (app as any).job;
+    return job?.accepted_worker_id === currentUserId && !["completed", "cancelled"].includes(job?.status);
+  });
+  const oldPostedJobs = postedJobs.filter((job) => ["completed", "cancelled"].includes(job.status));
+  const oldAppliedJobs = appliedJobs.filter((app) => {
+    const job = (app as any).job;
+    return ["completed", "cancelled"].includes(job?.status) || ["withdrawn", "rejected"].includes(app.status);
+  });
+
+  async function loadJobs(active = true) {
+    try {
+      setLoading(true);
+      setErrorText(null);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!active) return;
+      if (!user) {
+        setCurrentUserId(null);
+        setPostedJobs([]);
+        setAppliedJobs([]);
+        setApplicationCounts({});
+        return;
+      }
+      setCurrentUserId(user.id);
+      const [posted, applied] = await Promise.all([
+        getMyPostedJobs(),
+        getMyApplications(),
+      ]);
+      if (!active) return;
+      const counts = await getApplicationCountsForJobs(posted.map((job) => job.id)).catch(() => ({}));
+      if (!active) return;
+      setPostedJobs(posted);
+      setAppliedJobs(applied);
+      setApplicationCounts(counts);
+    } catch (err: any) {
+      if (!active) return;
+      setErrorText(err?.message || "Could not load your jobs.");
+    } finally {
+      if (active) setLoading(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
-    async function load() {
-      try {
-        setLoading(true);
-        setErrorText(null);
-        const [posted, applied] = await Promise.all([
-          getMyPostedJobs().catch(() => [] as Job[]),
-          getMyApplications().catch(() => [] as Application[]),
-        ]);
-        if (!active) return;
-        setPostedJobs(posted);
-        setAppliedJobs(applied);
-      } catch (err: any) {
-        if (!active) return;
-        setErrorText(err?.message || "Could not load your jobs.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    load();
+    loadJobs(active);
     return () => { active = false; };
   }, []);
+
+  function handleClearOldJobs() {
+    const oldCount = postedJobs.filter((job) => job.status === "completed" || job.status === "cancelled").length;
+    if (oldCount === 0) {
+      setActionMessage({ type: "error", text: "There are no completed or cancelled posted jobs to clear." });
+      Alert.alert("No old jobs", "There are no completed or cancelled posted jobs to clear.");
+      return;
+    }
+    Alert.alert(
+      "Clear old jobs?",
+      "Only completed and cancelled posted jobs will be hidden. Active jobs will stay visible.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          onPress: async () => {
+            try {
+              setClearingOld(true);
+              const cleared = await clearOldPostedJobs();
+              await loadJobs(true);
+              setActionMessage({ type: "success", text: `${cleared} old posted job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.` });
+              Alert.alert("Old jobs cleared", `${cleared} completed or cancelled job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.`);
+            } catch (err: any) {
+              console.log("Could not clear old jobs", err);
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not clear old jobs", message);
+            } finally {
+              setClearingOld(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleCancelPostedJob(job: Job) {
+    Alert.alert(
+      "Cancel this job?",
+      "This marks the job cancelled and closes applications. You can reopen it from the job detail page.",
+      [
+        { text: "Keep job", style: "cancel" },
+        {
+          text: "Cancel job",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setBusyJobId(job.id);
+              await cancelJob(job.id, "Cancelled by poster");
+              await loadJobs(true);
+              setActionMessage({ type: "success", text: "Job cancelled." });
+              Alert.alert("Job cancelled", "This job is now cancelled.");
+            } catch (err: any) {
+              console.log("Could not cancel job from My Jobs", err);
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not cancel job", message);
+            } finally {
+              setBusyJobId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleRemovePostedJob(job: Job) {
+    Alert.alert(
+      "Remove this job?",
+      "Only open, completed, or cancelled jobs can be removed from your list. Active selected jobs should be cancelled first.",
+      [
+        { text: "Keep job", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setBusyJobId(job.id);
+              await removeJob(job.id);
+              await loadJobs(true);
+              setActionMessage({ type: "success", text: "Job removed from your list." });
+              Alert.alert("Job removed", "This job has been hidden from your list.");
+            } catch (err: any) {
+              console.log("Could not remove job from My Jobs", err);
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not remove job", message);
+            } finally {
+              setBusyJobId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleWithdrawApplication(app: Application) {
+    Alert.alert("Withdraw application?", "This cancels your active application for this job.", [
+      { text: "Keep application", style: "cancel" },
+      {
+        text: "Withdraw",
+        onPress: async () => {
+          try {
+            setBusyJobId(app.job_id);
+            await withdrawApplication(app.job_id);
+            await loadJobs(true);
+            setActionMessage({ type: "success", text: "Application withdrawn." });
+            Alert.alert("Application withdrawn", "Your application has been cancelled.");
+          } catch (err: any) {
+            const message = err?.message || "Something went wrong.";
+            setActionMessage({ type: "error", text: message });
+            Alert.alert("Could not withdraw", message);
+          } finally {
+            setBusyJobId(null);
+          }
+        },
+      },
+    ]);
+  }
+
+  function handleLeaveSelectedJob(app: Application) {
+    if (!currentUserId) {
+      setActionMessage({ type: "error", text: "You need to be signed in to leave this job." });
+      return;
+    }
+    Alert.alert("Leave this job?", "Leaving before completion returns the job to open.", [
+      { text: "Stay", style: "cancel" },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setBusyJobId(app.job_id);
+            await leaveAcceptedJob(app.job_id, currentUserId);
+            await loadJobs(true);
+            setActionMessage({ type: "success", text: "You left the job and it has been reopened." });
+            Alert.alert("Left job", "The job has been reopened.");
+          } catch (err: any) {
+            const message = err?.message || "Something went wrong.";
+            setActionMessage({ type: "error", text: message });
+            Alert.alert("Could not leave", message);
+          } finally {
+            setBusyJobId(null);
+          }
+        },
+      },
+    ]);
+  }
+
+  async function handleOpenChat(app: Application) {
+    const job = (app as any).job;
+    if (!currentUserId || !job?.id || !job?.poster_id || !job?.accepted_worker_id) {
+      setActionMessage({ type: "error", text: "Could not open chat because this selected job is missing conversation details." });
+      return;
+    }
+    try {
+      setBusyJobId(app.job_id);
+      const conversation = await createOrOpenConversation(job.id, job.poster_id, job.accepted_worker_id);
+      router.push(`/app/messages/${conversation.id}`);
+    } catch (err: any) {
+      const message = err?.message || "Could not open chat.";
+      setActionMessage({ type: "error", text: message });
+      Alert.alert("Could not open chat", message);
+    } finally {
+      setBusyJobId(null);
+    }
+  }
+
+  async function handleOpenPostedChat(job: Job) {
+    if (!job.id || !job.poster_id || !job.accepted_worker_id) {
+      setActionMessage({ type: "error", text: "Could not open chat because this job has no selected worker." });
+      return;
+    }
+    try {
+      setBusyJobId(job.id);
+      const conversation = await createOrOpenConversation(job.id, job.poster_id, job.accepted_worker_id);
+      router.push(`/app/messages/${conversation.id}`);
+    } catch (err: any) {
+      const message = err?.message || "Could not open chat.";
+      setActionMessage({ type: "error", text: message });
+      Alert.alert("Could not open chat", message);
+    } finally {
+      setBusyJobId(null);
+    }
+  }
+
+  function handleCompleteActiveJob(job: Job) {
+    Alert.alert("Complete this job?", "This marks the job completed and moves it out of active jobs.", [
+      { text: "Keep active", style: "cancel" },
+      {
+        text: "Complete",
+        onPress: async () => {
+          try {
+            setBusyJobId(job.id);
+            await completeJob(job.id);
+            await loadJobs(true);
+            setActionMessage({ type: "success", text: "Job completed." });
+            Alert.alert("Job completed", "This job has moved to completed/cancelled history.");
+          } catch (err: any) {
+            const message = err?.message || "Could not complete this job.";
+            setActionMessage({ type: "error", text: message });
+            Alert.alert("Could not complete job", message);
+          } finally {
+            setBusyJobId(null);
+          }
+        },
+      },
+    ]);
+  }
 
   if (loading) {
     return (
@@ -76,10 +383,21 @@ export default function MyJobsScreen() {
     );
   }
 
+  if (!currentUserId) {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <SignInRequired title="Sign in to view your jobs" text="My Jobs shows jobs you posted, applied for, and selected work. Sign in to see your dashboard." />
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>My Jobs</Text>
       <Text style={styles.subtitle}>Track posted jobs and jobs you have applied for with clear status labels.</Text>
+      <Pressable style={styles.clearButton} onPress={handleClearOldJobs} disabled={clearingOld}>
+        <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old completed/cancelled jobs"}</Text>
+      </Pressable>
 
       {errorText ? (
         <View style={styles.errorBox}>
@@ -87,12 +405,18 @@ export default function MyJobsScreen() {
         </View>
       ) : null}
 
-      <Text style={styles.sectionTitle}>Posted jobs</Text>
+      {actionMessage ? (
+        <View style={actionMessage.type === "success" ? styles.successBox : styles.errorBox}>
+          <Text style={actionMessage.type === "success" ? styles.successText : styles.errorText}>{actionMessage.text}</Text>
+        </View>
+      ) : null}
+
+      <Text style={styles.sectionTitle}>Posted by me</Text>
       <View style={styles.group}>
-        {postedJobs.length === 0 ? (
+        {activePostedJobs.length === 0 ? (
           <Text style={styles.emptyText}>No posted jobs yet.</Text>
         ) : (
-          postedJobs.map((job) => (
+          activePostedJobs.map((job) => (
             <JobRow
               key={job.id}
               title={job.title}
@@ -100,17 +424,24 @@ export default function MyJobsScreen() {
               status={toStatusLabel(job.status)}
               jobId={job.id}
               isPosted
+              applicants={applicationCounts[job.id] || 0}
+              rawStatus={job.status}
+              busy={busyJobId === job.id}
+              onCancel={() => handleCancelPostedJob(job)}
+              onRemove={() => handleRemovePostedJob(job)}
+              onOpenChat={job.accepted_worker_id ? () => handleOpenPostedChat(job) : undefined}
+              onComplete={job.status === "in_progress" ? () => handleCompleteActiveJob(job) : undefined}
             />
           ))
         )}
       </View>
 
-      <Text style={styles.sectionTitle}>Applied jobs</Text>
+      <Text style={styles.sectionTitle}>Applied for</Text>
       <View style={styles.group}>
-        {appliedJobs.length === 0 ? (
+        {appliedActiveJobs.length === 0 ? (
           <Text style={styles.emptyText}>No applications yet.</Text>
         ) : (
-          appliedJobs.map((app) => {
+          appliedActiveJobs.map((app) => {
             const job = (app as any).job;
             return (
               <JobRow
@@ -120,9 +451,73 @@ export default function MyJobsScreen() {
                 status={toStatusLabel(app.status)}
                 jobId={app.job_id}
                 isPosted={false}
+                busy={busyJobId === app.job_id}
+                onWithdraw={() => handleWithdrawApplication(app)}
               />
             );
           })
+        )}
+      </View>
+
+      <Text style={styles.sectionTitle}>Selected / active</Text>
+      <View style={styles.group}>
+        {selectedActiveJobs.length === 0 ? (
+          <Text style={styles.emptyText}>No selected jobs yet.</Text>
+        ) : (
+          selectedActiveJobs.map((app) => {
+            const job = (app as any).job;
+            return (
+              <JobRow
+                key={`selected-${app.id}`}
+                title={job?.title || "Unknown job"}
+                budget={job?.budget_gbp ? `£${job.budget_gbp}` : "—"}
+                status={toStatusLabel(job?.status || app.status)}
+                jobId={app.job_id}
+                isPosted={false}
+                busy={busyJobId === app.job_id}
+                onOpenChat={() => handleOpenChat(app)}
+                onLeave={job?.status !== "completed" && job?.status !== "cancelled" ? () => handleLeaveSelectedJob(app) : undefined}
+              />
+            );
+          })
+        )}
+      </View>
+
+      <Text style={styles.sectionTitle}>Completed / cancelled</Text>
+      <View style={styles.group}>
+        {oldPostedJobs.length === 0 && oldAppliedJobs.length === 0 ? (
+          <Text style={styles.emptyText}>No completed or cancelled jobs.</Text>
+        ) : (
+          <>
+            {oldPostedJobs.map((job) => (
+              <JobRow
+                key={`old-${job.id}`}
+                title={job.title}
+                budget={`£${job.budget_gbp}`}
+                status={toStatusLabel(job.status)}
+                jobId={job.id}
+                isPosted
+                applicants={applicationCounts[job.id] || 0}
+                rawStatus={job.status}
+                busy={busyJobId === job.id}
+                onRemove={() => handleRemovePostedJob(job)}
+              />
+            ))}
+            {oldAppliedJobs.map((app) => {
+              const job = (app as any).job;
+              return (
+                <JobRow
+                  key={`old-app-${app.id}`}
+                  title={job?.title || "Unknown job"}
+                  budget={job?.budget_gbp ? `£${job.budget_gbp}` : "-"}
+                  status={toStatusLabel(job?.status || app.status)}
+                  jobId={app.job_id}
+                  isPosted={false}
+                  busy={busyJobId === app.job_id}
+                />
+              );
+            })}
+          </>
         )}
       </View>
     </ScrollView>
@@ -183,6 +578,16 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "800",
   },
+  applicantText: {
+    color: "#B56CFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  statusHelp: {
+    color: "#A590C9",
+    fontSize: 13,
+    lineHeight: 18,
+  },
   actionButton: {
     backgroundColor: "#2A1E3D",
     borderColor: "#6E46A3",
@@ -194,6 +599,46 @@ const styles = StyleSheet.create({
     color: "#E7D9FF",
     textAlign: "center",
     fontSize: 15,
+    fontWeight: "800",
+  },
+  cancelButton: {
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  cancelButtonText: {
+    color: "#FFD8DE",
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  removeButton: {
+    backgroundColor: "#171024",
+    borderColor: "#3A2B52",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  removeButtonText: {
+    color: "#CBB8F1",
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  clearButton: {
+    backgroundColor: "#171024",
+    borderColor: "#3A2B52",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  clearButtonText: {
+    color: "#CBB8F1",
+    textAlign: "center",
+    fontSize: 14,
     fontWeight: "800",
   },
   centered: {
@@ -218,6 +663,19 @@ const styles = StyleSheet.create({
     color: "#FFD8DE",
     fontSize: 14,
     lineHeight: 20,
+  },
+  successBox: {
+    backgroundColor: "#102619",
+    borderColor: "#2F7A45",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+  },
+  successText: {
+    color: "#C8F7D2",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
   },
   emptyText: {
     color: "#CBB8F1",

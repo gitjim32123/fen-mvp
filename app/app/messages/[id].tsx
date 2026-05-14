@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { getConversation, getMessages, sendMessage } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation, Message } from "../../../lib/types";
+import { SignInRequired } from "../../../components/ui/Premium";
 
 export default function ConversationScreen() {
   const router = useRouter();
@@ -15,9 +16,10 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [conversation, setConversation] = useState<(Conversation & { job?: { title: string }; poster?: { display_name: string }; worker?: { display_name: string } }) | null>(null);
+  const [conversation, setConversation] = useState<(Conversation & { job?: { title: string; status?: string }; poster?: { display_name: string }; worker?: { display_name: string } }) | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [requiresSignIn, setRequiresSignIn] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -29,8 +31,17 @@ export default function ConversationScreen() {
       }
       try {
         setErrorText(null);
+        setRequiresSignIn(false);
         const { data: { user } } = await supabase.auth.getUser();
         if (active) setCurrentUserId(user?.id ?? null);
+        if (!user) {
+          if (active) {
+            setMessages([]);
+            setConversation(null);
+            setRequiresSignIn(true);
+          }
+          return;
+        }
 
         const [conv, data] = await Promise.all([
           getConversation(conversationId),
@@ -50,7 +61,14 @@ export default function ConversationScreen() {
   }, [conversationId]);
 
   async function handleSend() {
-    if (!newMessage.trim() || !conversationId || !currentUserId) return;
+    if (!newMessage.trim()) {
+      setSendError("Enter a message before sending.");
+      return;
+    }
+    if (!conversationId || !currentUserId) {
+      setSendError("Could not send because the conversation or user is missing.");
+      return;
+    }
     try {
       setSending(true);
       setSendError(null);
@@ -82,12 +100,35 @@ export default function ConversationScreen() {
     ? conversation?.worker?.display_name || "Worker"
     : conversation?.poster?.display_name || "Poster";
   const jobTitle = conversation?.job?.title || "Job conversation";
+  const isCompleted = conversation?.job?.status === "completed";
+  const isCancelled = conversation?.job?.status === "cancelled";
+  const isReadOnly = isCancelled || isCompleted;
+
+  function handleReportConversation() {
+    if (!currentUserId) {
+      setSendError("Sign in before reporting this conversation.");
+      Alert.alert("Sign in required", "Sign in before reporting this conversation.");
+      return;
+    }
+    setSendError("Report noted locally for MVP. Please keep screenshots.");
+    Alert.alert(
+      "Report noted locally for MVP. Please keep screenshots and do not continue if unsafe."
+    );
+  }
 
   if (loading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#B56CFF" />
         <Text style={styles.loadingText}>Loading conversation…</Text>
+      </View>
+    );
+  }
+
+  if (requiresSignIn) {
+    return (
+      <View style={styles.signInContainer}>
+        <SignInRequired title="Sign in to view this conversation" text="Messages are private and only available to the selected poster and helper." />
       </View>
     );
   }
@@ -104,26 +145,56 @@ export default function ConversationScreen() {
         </Pressable>
         <Text style={styles.headerTitle}>{otherName}</Text>
         <Text style={styles.headerSubtitle}>{jobTitle}</Text>
+        <Text style={styles.statusText}>Status: {conversation?.job?.status || "unknown"}</Text>
+        <View style={styles.headerActions}>
+          {conversation?.job_id ? (
+            <Pressable style={styles.smallButton} onPress={() => router.push(`/app/job/${conversation.job_id}`)}>
+              <Text style={styles.smallButtonText}>Open job</Text>
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.smallButton} onPress={handleReportConversation}>
+            <Text style={styles.smallButtonText}>Report conversation</Text>
+          </Pressable>
+        </View>
       </View>
+
+      {isReadOnly ? (
+        <View style={styles.cancelledBanner}>
+          <Text style={styles.cancelledText}>
+            {isCompleted
+              ? "This job is completed. This conversation is kept for your records."
+              : "This job was cancelled. Any new arrangement requires a new agreement."}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.safetyBanner}>
+          <Text style={styles.safetyText}>Keep arrangements clear. FEN does not process MVP payments.</Text>
+        </View>
+      )}
 
       <FlatList
         data={messages}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item: Message) => item.id}
         style={styles.list}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => {
+        renderItem={({ item }: { item: Message }) => {
           const isMe = item.sender_id === currentUserId;
           return (
             <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
               <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText]}>
                 {item.body}
               </Text>
+              <Text style={[styles.messageTime, isMe ? styles.myMessageText : styles.theirMessageText]}>
+                {new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </Text>
             </View>
           );
         }}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
+            <Text style={styles.emptyText}>
+              {isReadOnly ? "No messages were sent before this job closed." : "No messages yet. Start the conversation!"}
+            </Text>
           </View>
         }
       />
@@ -133,18 +204,18 @@ export default function ConversationScreen() {
         <View style={styles.composerRow}>
           <TextInput
             style={styles.input}
-            placeholder="Type a message…"
+            placeholder={isReadOnly ? "Chat is read-only" : "Type a message..."}
             placeholderTextColor="#8D79AF"
             value={newMessage}
             onChangeText={setNewMessage}
-            editable={!sending}
+            editable={!sending && !isReadOnly}
             returnKeyType="send"
             onSubmitEditing={handleSend}
           />
           <Pressable
-            style={[styles.sendButton, (!newMessage.trim() || sending) && styles.sendButtonDisabled]}
+            style={[styles.sendButton, (!newMessage.trim() || sending || isReadOnly) && styles.sendButtonDisabled]}
             onPress={handleSend}
-            disabled={!newMessage.trim() || sending}
+            disabled={!newMessage.trim() || sending || isReadOnly}
           >
             {sending ? (
               <ActivityIndicator size="small" color="#140E1D" />
@@ -185,6 +256,56 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 4,
   },
+  statusText: {
+    color: "#A590C9",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  headerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  smallButton: {
+    backgroundColor: "#171024",
+    borderColor: "#3A2B52",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  smallButtonText: {
+    color: "#E7D9FF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  safetyBanner: {
+    backgroundColor: "#20172E",
+    borderBottomWidth: 1,
+    borderBottomColor: "#5B3A87",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  safetyText: {
+    color: "#CBB8F1",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  cancelledBanner: {
+    backgroundColor: "#2B161B",
+    borderBottomWidth: 1,
+    borderBottomColor: "#8E4656",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  cancelledText: {
+    color: "#FFB0B0",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
   list: {
     flex: 1,
   },
@@ -210,6 +331,12 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 15,
     lineHeight: 20,
+  },
+  messageTime: {
+    fontSize: 11,
+    opacity: 0.7,
+    marginTop: 4,
+    alignSelf: "flex-end",
   },
   myMessageText: {
     color: "#140E1D",
@@ -271,6 +398,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
+  },
+  signInContainer: {
+    flex: 1,
+    backgroundColor: "#0E0A14",
+    padding: 20,
+    justifyContent: "center",
   },
   loadingText: {
     color: "#CBB8F1",

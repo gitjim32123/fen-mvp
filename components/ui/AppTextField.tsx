@@ -1,17 +1,18 @@
 import { StyleSheet, Text, TextInput, View, TextInputProps } from "react-native";
+import { theme } from "./theme";
 
 type Props = TextInputProps & {
   label?: string;
   hint?: string;
 };
 
-export default function AppTextField({ label, hint, ...props }: Props) {
+export default function AppTextField({ label, hint, style, ...props }: Props) {
   return (
     <View style={styles.wrap}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <TextInput
-        placeholderTextColor="#8D79AF"
-        style={[styles.input, props.multiline && styles.multiline]}
+        placeholderTextColor={theme.colors.subtle}
+        style={[styles.input, props.multiline && styles.multiline, style]}
         {...props}
       />
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
@@ -21,17 +22,17 @@ export default function AppTextField({ label, hint, ...props }: Props) {
 
 const styles = StyleSheet.create({
   wrap: { gap: 8 },
-  label: { color: "#E7D9FF", fontSize: 15, fontWeight: "700" },
+  label: { color: theme.colors.text, fontSize: 15, fontWeight: "800" },
   input: {
-    backgroundColor: "#171024",
-    borderColor: "#231A33",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: theme.radius.md,
     paddingHorizontal: 14,
     paddingVertical: 15,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
   },
   multiline: { minHeight: 110, textAlignVertical: "top" },
-  hint: { color: "#A590C9", fontSize: 13, lineHeight: 18 },
+  hint: { color: theme.colors.subtle, fontSize: 13, lineHeight: 18 },
 });

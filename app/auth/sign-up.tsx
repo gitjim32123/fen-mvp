@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { signUp } from "../../lib/auth";
+import { TrustBanner } from "../../components/ui/Premium";
+import type { TransportMode } from "../../lib/types";
+
+const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
+  { value: "walk", label: "Walk" },
+  { value: "cycle", label: "Cycle" },
+  { value: "drive", label: "Drive" },
+  { value: "public_transport", label: "Public transport" },
+  { value: "unspecified", label: "Not sure" },
+];
 
 export default function SignUpScreen() {
   const [displayName, setDisplayName] = useState("");
@@ -10,28 +20,41 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [transportMode, setTransportMode] = useState<TransportMode>("unspecified");
+  const [understandsPlatform, setUnderstandsPlatform] = useState(false);
 
   const passwordTooShort = password.length > 0 && password.length < 6;
 
   async function handleSignUp() {
     setSuccessMessage(null);
+    setErrorText(null);
     if (!displayName.trim() || !email.trim() || !password.trim()) {
+      setErrorText("Fill in all required fields.");
       Alert.alert("Missing fields", "Fill in all required fields.");
       return;
     }
     if (password.length < 6) {
+      setErrorText("Password must be at least 6 characters.");
       Alert.alert("Password too short", "Password must be at least 6 characters.");
+      return;
+    }
+    if (!understandsPlatform) {
+      setErrorText("Confirm you understand FEN connects users and does not process payments in MVP.");
+      Alert.alert("Confirm platform basics", "Confirm you understand FEN connects users and does not process payments in MVP.");
       return;
     }
     try {
       setLoading(true);
-      await signUp(email.trim(), password, displayName.trim(), postcode.trim().toUpperCase());
+      await signUp(email.trim(), password, displayName.trim(), postcode.trim().toUpperCase(), transportMode);
       setSuccessMessage("Account created. Check your email for the confirmation link.");
       Alert.alert("Check your email", "We've sent a confirmation link.", [
         { text: "OK", onPress: () => router.replace("/auth/sign-in") },
       ]);
     } catch (err: any) {
-      Alert.alert("Registration failed", err?.message || "Something went wrong.");
+      const message = err?.message || "Something went wrong.";
+      setErrorText(message);
+      Alert.alert("Registration failed", message);
     } finally {
       setLoading(false);
     }
@@ -46,7 +69,7 @@ export default function SignUpScreen() {
         <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
 
         <Text style={styles.title}>Register</Text>
-        <Text style={styles.subtitle}>Create a simple account to post a job or find work nearby.</Text>
+        <Text style={styles.subtitle}>Fast Earn Nearby connects people who need quick local help with people nearby who can help.</Text>
 
         <TextInput placeholder="Display name" placeholderTextColor="#8D79AF" style={styles.input} value={displayName} onChangeText={setDisplayName} editable={!loading} />
         <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
@@ -56,21 +79,53 @@ export default function SignUpScreen() {
           <Text style={styles.validationText}>Password must be at least 6 characters.</Text>
         ) : null}
 
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>Verification is required before posting, applying, or messaging.</Text>
+        <Text style={styles.sectionLabel}>Transport</Text>
+        <View style={styles.optionRow}>
+          {TRANSPORT_OPTIONS.map((option) => (
+            <Pressable
+              key={option.value}
+              style={[styles.optionChip, transportMode === option.value && styles.optionChipActive]}
+              onPress={() => setTransportMode(option.value)}
+              disabled={loading}
+            >
+              <Text style={[styles.optionChipText, transportMode === option.value && styles.optionChipTextActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <TrustBanner title="How FEN works">
+          FEN connects people. FEN does not process payments in MVP; payment is arranged directly between users.
+        </TrustBanner>
+
+        <Pressable
+          style={[styles.confirmBox, understandsPlatform && styles.confirmBoxActive]}
+          onPress={() => setUnderstandsPlatform((v) => !v)}
+          disabled={loading}
+        >
+          <Text style={styles.confirmText}>
+            {understandsPlatform ? "Confirmed: " : ""}I understand FEN is a connection platform, not an employer or payment processor.
+          </Text>
+        </Pressable>
+
+        <View style={styles.legalRow}>
+          <Pressable onPress={() => router.push("/legal/terms")}><Text style={styles.legalLink}>Terms</Text></Pressable>
+          <Pressable onPress={() => router.push("/legal/privacy")}><Text style={styles.legalLink}>Privacy</Text></Pressable>
+          <Pressable onPress={() => router.push("/legal/safety")}><Text style={styles.legalLink}>Safety</Text></Pressable>
+          <Pressable onPress={() => router.push("/legal/payments")}><Text style={styles.legalLink}>Payments</Text></Pressable>
         </View>
 
         {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-        <Pressable style={[styles.primaryButton, (loading || passwordTooShort) && styles.disabledButton]} onPress={handleSignUp} disabled={loading || passwordTooShort}>
+        <Pressable style={[styles.primaryButton, (loading || passwordTooShort || !understandsPlatform) && styles.disabledButton]} onPress={handleSignUp} disabled={loading || passwordTooShort || !understandsPlatform}>
           {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Create account</Text>}
         </Pressable>
 
-        <Link href="/auth/sign-in" asChild>
-          <Pressable>
-            <Text style={styles.altText}>Already have an account? Sign in</Text>
-          </Pressable>
-        </Link>
+        <Pressable onPress={() => router.push("/auth/sign-in")}>
+          <Text style={styles.altText}>Already have an account? Sign in</Text>
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -142,6 +197,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  sectionLabel: {
+    alignSelf: "stretch",
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  optionRow: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+  },
+  optionChip: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  optionChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: "#2A1E3D",
+  },
+  optionChipText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  optionChipTextActive: {
+    color: colors.text,
+  },
+  confirmBox: {
+    alignSelf: "stretch",
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  confirmBoxActive: {
+    borderColor: colors.accent,
+  },
+  confirmText: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "700",
+  },
+  legalRow: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  legalLink: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: "800",
+  },
   validationText: {
     color: "#FFB0B0",
     fontSize: 13,
@@ -152,6 +268,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     alignSelf: "stretch",
+  },
+  errorText: {
+    alignSelf: "stretch",
+    color: "#FFD8DE",
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
   },
   primaryButton: {
     backgroundColor: colors.accent,

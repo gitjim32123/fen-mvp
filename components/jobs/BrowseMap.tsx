@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Job } from "../../lib/types";
 
 type Pin = { x: number; y: number; id: string };
@@ -11,8 +11,8 @@ function hashStr(s: string) {
 }
 
 function pinsFromJobs(jobs: Job[]): Pin[] {
-  return jobs.map((job) => {
-    const h = hashStr(job.id + (job.postcode_district || job.postcode || ""));
+  return jobs.filter((job) => job?.id).map((job) => {
+    const h = hashStr(job.id + ((job as any).postcode_district || job.postcode || ""));
     return {
       x: 8 + (h % 80),
       y: 10 + ((h >> 8) % 70),
@@ -24,9 +24,10 @@ function pinsFromJobs(jobs: Job[]): Pin[] {
 type Props = {
   jobs: Job[];
   selectedId?: string;
+  onJobPress?: (jobId: string) => void;
 };
 
-export default function BrowseMap({ jobs, selectedId }: Props) {
+export default function BrowseMap({ jobs, selectedId, onJobPress }: Props) {
   const [pins, setPins] = useState<Pin[]>([]);
 
   useEffect(() => {
@@ -48,8 +49,9 @@ export default function BrowseMap({ jobs, selectedId }: Props) {
         {pins.map((pin) => {
           const isSelected = pin.id === selectedId;
           return (
-            <View
+            <Pressable
               key={pin.id}
+              onPress={() => onJobPress?.(pin.id)}
               style={[
                 styles.pin,
                 { left: `${pin.x}%`, top: `${pin.y}%` },

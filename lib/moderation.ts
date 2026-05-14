@@ -2,7 +2,44 @@ export type ModerationResult = {
   score: number;
   signals: string[];
   action: "allow" | "warn" | "block";
+  reason?: string;
 };
+
+const BLOCKED_JOB_TYPES: { pattern: RegExp; label: string }[] = [
+  { pattern: /\b(gas|gas safe|boiler|carbon monoxide)\b/i, label: "Gas or boiler work needs a qualified professional." },
+  { pattern: /\b(electrical|electrician|rewire|consumer unit|fuse box|qualified electrician)\b/i, label: "Electrical work needs a qualified professional." },
+  { pattern: /\b(asbestos|roofing|roofer|roof repair)\b/i, label: "Asbestos and roofing work are not suitable for FEN MVP." },
+  { pattern: /\b(medical|medicine|medication|nursing|care work|carer|elder care|personal care|emergency|first aid)\b/i, label: "Medical, care, and emergency work is not allowed on FEN MVP." },
+  { pattern: /\b(childcare|babysit|babysitting|look after my child|school pickup)\b/i, label: "Childcare is not allowed on FEN MVP." },
+  { pattern: /\b(adult service|escort|weapon|knife|gun|drugs?|cocaine|cannabis|illegal)\b/i, label: "Illegal, adult, weapons, or drug-related work is not allowed." },
+];
+
+const BUSINESS_AD_TYPES: { pattern: RegExp; label: string }[] = [
+  { pattern: /\b(professional\s+(gardener|cleaner|service|handyman|builder|trader)|man\s+(and|in)\s+van(\s+service)?|plumber|gas engineer)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+  { pattern: /\b(my|our)\s+(company|business)\s+(offers?|provides?|advertis|promot)/i, label: "Business advertising is not allowed." },
+  { pattern: /\b(advertis(e|ing)\s+my\s+business|business\s+promotion|service\s+packages?|book\s+my\s+service)\b/i, label: "Business advertising is not allowed." },
+  { pattern: /\b(clients?|customers?)\b.*\b(packages?|book|service|offer|promotion)\b/i, label: "Repeat trade or service promotion is not allowed." },
+  { pattern: /\b(i offer|we offer|services available|free quote|repeat work|regular customers?)\b/i, label: "Repeat trade or service promotion is not allowed." },
+  { pattern: /\b(ltd|limited company|sole trader|tradesman|contractor)\b.*\b(service|quote|available|book|offer)\b/i, label: "Company or trade promotion is not allowed." },
+];
+
+export function checkJobSafety(input: { title: string; description: string }): ModerationResult {
+  const text = `${input.title} ${input.description}`;
+
+  for (const item of BLOCKED_JOB_TYPES) {
+    if (item.pattern.test(text)) {
+      return { score: 10, signals: [item.label], action: "block", reason: item.label };
+    }
+  }
+
+  for (const item of BUSINESS_AD_TYPES) {
+    if (item.pattern.test(text)) {
+      return { score: 5, signals: [item.label], action: "warn", reason: item.label };
+    }
+  }
+
+  return { score: 0, signals: [], action: "allow" };
+}
 
 const STRONG_SIGNALS: { pattern: RegExp; label: string; points: number }[] = [
   { pattern: /0\d{9,10}/g, label: "Phone number detected", points: 5 },

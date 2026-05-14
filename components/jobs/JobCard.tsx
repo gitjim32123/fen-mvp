@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import StatusChip from "./StatusChip";
 
@@ -12,28 +11,12 @@ type Props = {
   area: string;
   distance: string;
   travelTime: string;
-  images?: string[];
   onPress?: () => void;
 };
 
-export default function JobCard({ title, budget, urgency, status = "Open", category, area, distance, travelTime, images, onPress }: Props) {
-  const [imageError, setImageError] = useState(false);
-
-  const hasValidImage = images && images.length > 0 && !imageError && !!images[0];
-
+export default function JobCard({ title, budget, urgency, status = "Open", category, area, distance, travelTime, onPress }: Props) {
   return (
     <Pressable style={styles.card} onPress={onPress}>
-      {hasValidImage ? (
-        <Image
-          source={{ uri: images[0] }}
-          style={styles.cardImage}
-          resizeMode="cover"
-          onError={() => setImageError(true)}
-        />
-      ) : (
-        <View style={styles.imagePlaceholder} />
-      )}
-
       <View style={styles.topRow}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
         <Text style={styles.budget}>{budget}</Text>
@@ -69,16 +52,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 18,
     overflow: "hidden",
-  },
-  cardImage: {
-    width: "100%",
-    height: 140,
-    backgroundColor: "#1A1025",
-  },
-  imagePlaceholder: {
-    width: "100%",
-    height: 140,
-    backgroundColor: "#1A1025",
   },
   topRow: {
     flexDirection: "row",

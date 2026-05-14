@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { signIn } from "../../lib/auth";
+import { TrustBanner } from "../../components/ui/Premium";
 
 function getSignInErrorMessage(error: any) {
   const message = String(error?.message || "").toLowerCase();
@@ -18,9 +19,12 @@ export default function SignInScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   async function handleSignIn() {
+    setErrorText(null);
     if (!email.trim() || !password.trim()) {
+      setErrorText("Enter your email and password.");
       Alert.alert("Missing fields", "Enter your email and password.");
       return;
     }
@@ -29,7 +33,9 @@ export default function SignInScreen() {
       await signIn(email.trim(), password);
       router.replace("/app");
     } catch (err: any) {
-      Alert.alert("Sign in failed", getSignInErrorMessage(err));
+      const message = getSignInErrorMessage(err);
+      setErrorText(message);
+      Alert.alert("Sign in failed", message);
     } finally {
       setLoading(false);
     }
@@ -44,28 +50,35 @@ export default function SignInScreen() {
         <Image source={require("../../assets/images/fen-logo.png")} style={styles.icon} />
 
         <Text style={styles.title}>Sign in</Text>
-        <Text style={styles.subtitle}>Use your email and password to continue.</Text>
+        <Text style={styles.subtitle}>Fast Earn Nearby connects local jobs with nearby people who can help.</Text>
 
         <View style={styles.notice}>
           <Text style={styles.noticeText}>Please verify your email before posting, applying, or messaging.</Text>
         </View>
 
+        <TrustBanner title="MVP payments">
+          FEN does not process payments yet. Any payment is arranged directly between users.
+        </TrustBanner>
+
         <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
         <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
+
+        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
         <Pressable style={[styles.primaryButton, loading && styles.disabledButton]} onPress={handleSignIn} disabled={loading}>
           {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Sign in</Text>}
         </Pressable>
 
-        <Pressable>
-          <Text style={styles.forgotText}>Forgot password</Text>
-        </Pressable>
+        <View style={styles.legalRow}>
+          <Pressable onPress={() => router.push("/legal/terms")}><Text style={styles.legalLink}>Terms</Text></Pressable>
+          <Pressable onPress={() => router.push("/legal/privacy")}><Text style={styles.legalLink}>Privacy</Text></Pressable>
+          <Pressable onPress={() => router.push("/legal/safety")}><Text style={styles.legalLink}>Safety</Text></Pressable>
+          <Pressable onPress={() => router.push("/legal/payments")}><Text style={styles.legalLink}>Payments</Text></Pressable>
+        </View>
 
-        <Link href="/auth/sign-up" asChild>
-          <Pressable>
-            <Text style={styles.altText}>Need an account? Register</Text>
-          </Pressable>
-        </Link>
+        <Pressable onPress={() => router.push("/auth/sign-up")}>
+          <Text style={styles.altText}>Need an account? Register</Text>
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -153,11 +166,29 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.5,
   },
-  forgotText: {
-    color: colors.muted,
-    textAlign: "center",
-    fontSize: 15,
-    marginTop: 4,
+  errorText: {
+    alignSelf: "stretch",
+    color: "#FFD8DE",
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  legalRow: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 12,
+  },
+  legalLink: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: "800",
   },
   altText: {
     color: colors.text,

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -14,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   cancelJob,
+  completeJob,
   confirmJobStartTime,
   getJob,
   leaveAcceptedJob,
@@ -25,18 +25,17 @@ import {
 import {
   applyToJob,
   getApplicationsForJob,
-  reopenApplicationsForJob,
+  getMyApplicationForJob,
   selectWorker,
+  withdrawApplication,
 } from "../../../lib/applications";
+import { getProfile } from "../../../lib/auth";
+import { estimateMiles, estimateTravelMinutes, geocodePostcode, getCurrentGpsPoint, getTravelEstimateUnavailableText } from "../../../lib/geocoding";
 import { createOrOpenConversation } from "../../../lib/messaging";
-import {
-  REPORT_REASONS,
-  getReportCount,
-  hasReported,
-  submitReport,
-} from "../../../lib/reports";
 import { supabase } from "../../../lib/supabase";
-import type { Job } from "../../../lib/types";
+import type { Application, Job } from "../../../lib/types";
+import { SignInRequired } from "../../../components/ui/Premium";
+import { normalizeCategory } from "../../../lib/categories";
 
 function toStatusLabel(status?: string) {
   switch (status) {
@@ -112,6 +111,36 @@ function getStatusHelp(status?: string) {
   }
 }
 
+const DATE_CHIPS = [
+  { label: "Today", offset: 0 },
+  { label: "Tomorrow", offset: 1 },
+  { label: "In 2 days", offset: 2 },
+];
+
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, index) => {
+  const minutes = 8 * 60 + index * 15;
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+});
+
+function buildStartTime(offset: number, time: string) {
+  const date = new Date();
+  date.setDate(date.getDate() + offset);
+  const [hour, minute] = time.split(":").map(Number);
+  date.setHours(hour, minute, 0, 0);
+  return date.toISOString();
+}
+
+function formatCancellationCutoff(startTime?: string, travelMinutes?: number) {
+  if (!startTime) return null;
+  const start = new Date(startTime);
+  if (Number.isNaN(start.getTime())) return null;
+  const buffer = (travelMinutes || 0) + 15;
+  const cutoff = new Date(start.getTime() - buffer * 60 * 1000);
+  return formatStartTime(cutoff.toISOString());
+}
+
 export default function JobDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -124,11 +153,6 @@ export default function JobDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
-  const [reportCount, setReportCount] = useState(0);
-  const [reportModalReason, setReportModalReason] = useState<string | null>(null);
-  const [reportDetails, setReportDetails] = useState("");
-  const [submittingReport, setSubmittingReport] = useState(false);
-  const [imageErrors, setImageErrors] = useState<Record<number, boolean>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [applications, setApplications] = useState<any[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(false);
@@ -137,7 +161,10 @@ export default function JobDetailScreen() {
   const [showApplications, setShowApplications] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [startTime, setStartTime] = useState("");
+  const [startDateOffset, setStartDateOffset] = useState(0);
+  const [startClockTime, setStartClockTime] = useState("18:00");
   const [updatingStartTime, setUpdatingStartTime] = useState(false);
+  const [completingJob, setCompletingJob] = useState(false);
   const [applicationsError, setApplicationsError] = useState<string | null>(null);
   const [showEditJob, setShowEditJob] = useState(false);
   const [savingJob, setSavingJob] = useState(false);
@@ -146,6 +173,15 @@ export default function JobDetailScreen() {
   const [editBudget, setEditBudget] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editPostcode, setEditPostcode] = useState("");
+  const [myApplication, setMyApplication] = useState<Application | null>(null);
+  const [applicationMessage, setApplicationMessage] = useState("");
+  const [withdrawingApplication, setWithdrawingApplication] = useState(false);
+  const [applyMessage, setApplyMessage] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [travelEstimateText, setTravelEstimateText] = useState<string>(getTravelEstimateUnavailableText());
+  const [travelMinutes, setTravelMinutes] = useState<number | undefined>(undefined);
+  const [openingConversation, setOpeningConversation] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -178,10 +214,30 @@ export default function JobDetailScreen() {
         if (user?.id && data.poster_id === user.id) {
           const jobApplications = await getApplicationsForJob(jobId);
           if (active) setApplications(jobApplications);
+        } else if (user?.id) {
+          const application = await getMyApplicationForJob(jobId).catch(() => null);
+          if (active) setMyApplication(application);
         }
 
-        const count = await getReportCount(jobId);
-        if (active) setReportCount(count);
+        if (user?.id && data.poster_id !== user.id) {
+          const profile = await getProfile().catch(() => null);
+          const profilePostcode = profile?.postcode?.trim();
+          const jobPostcode = (data.postcode || "").split("→")[0]?.trim();
+          if (jobPostcode && jobPostcode !== "N/A" && jobPostcode !== "AREA NOT PROVIDED") {
+            const [gpsPoint, profilePoint, toPoint] = await Promise.all([
+              getCurrentGpsPoint(),
+              profilePostcode ? geocodePostcode(profilePostcode) : Promise.resolve(null),
+              geocodePostcode(jobPostcode),
+            ]).catch(() => [null, null, null]);
+            const fromPoint = gpsPoint || profilePoint;
+            if (active && fromPoint && toPoint) {
+              const miles = estimateMiles(fromPoint, toPoint);
+              const minutes = estimateTravelMinutes(miles, profile?.transport_mode || "unspecified");
+              setTravelMinutes(minutes);
+              setTravelEstimateText(`Approx travel distance ${miles.toFixed(1)} miles, about ${minutes} min by ${profile?.transport_mode || "your transport mode"}.`);
+            }
+          }
+        }
       } catch (error: any) {
         if (!active) return;
         setErrorText(error?.message || "Could not load this job.");
@@ -197,12 +253,19 @@ export default function JobDetailScreen() {
   }, [jobId]);
 
   const areaText = (job as any)?.postcode_district || job?.postcode || "Area not available";
+  const activeApplications = applications.filter((application) => application.status === "applied");
   const selectedApplication = applications.find((app) => app.worker_id === job?.accepted_worker_id);
   const selectedWorkerName =
     selectedApplication?.worker?.display_name ||
     (currentUserId === job?.accepted_worker_id ? "you" : "Selected helper");
-  const isPoster = currentUserId === job?.poster_id;
-  const isAcceptedWorker = currentUserId === job?.accepted_worker_id;
+  const isSignedIn = !!currentUserId;
+  const isPoster = !!currentUserId && currentUserId === job?.poster_id;
+  const isAcceptedWorker = !!currentUserId && !!job?.accepted_worker_id && currentUserId === job.accepted_worker_id;
+  const hasApplied = myApplication?.status === "applied";
+  const isSelectedWorker = isAcceptedWorker;
+  const applicationWithdrawn = myApplication?.status === "withdrawn";
+  const applicationsClosed = job?.status !== "open";
+  const hasSelectedWorker = !!job?.accepted_worker_id;
   const canManageStartTime =
     isPoster &&
     !!job?.accepted_worker_id &&
@@ -221,27 +284,68 @@ export default function JobDetailScreen() {
       : job?.status === "in_progress"
         ? "This job has started."
         : getStatusHelp((job as any)?.status);
+  const cancellationCutoff = formatCancellationCutoff(job?.agreed_start_at, travelMinutes);
 
   async function handleApply() {
-    if (!jobId) return;
+    if (!currentUserId) {
+      setApplyError("Sign in before applying for this job.");
+      Alert.alert("Sign in required", "Sign in before applying for this job.");
+      return;
+    }
+    if (!jobId) {
+      setApplyError("Job not found.");
+      return;
+    }
 
     try {
       setApplying(true);
-      await applyToJob(jobId);
-      Alert.alert(
-        "Applied!",
-        "The poster has been notified. They'll reach out if interested.",
-        [{ text: "OK", onPress: () => router.replace("/app/my-jobs") }]
-      );
+      setApplyError(null);
+      setApplyMessage(null);
+      const application = await applyToJob(jobId, applicationMessage.trim() || undefined);
+      setMyApplication(application);
+      setApplicationMessage("");
+      setApplyMessage("Applied. The poster can now review your application.");
+      Alert.alert("Applied!", "The poster has been notified. They'll reach out if interested.");
     } catch (err: any) {
-      Alert.alert("Could not apply", getApplyErrorMessage(err));
+      const message = getApplyErrorMessage(err);
+      setApplyError(message);
+      Alert.alert("Could not apply", message);
     } finally {
       setApplying(false);
     }
   }
 
+  async function handleWithdrawApplication() {
+    if (!currentUserId) {
+      setApplyError("Sign in before withdrawing this application.");
+      Alert.alert("Sign in required", "Sign in before withdrawing this application.");
+      return;
+    }
+    if (!jobId || !hasApplied) {
+      setApplyError("No active application was found to withdraw.");
+      return;
+    }
+    try {
+      setWithdrawingApplication(true);
+      setApplyError(null);
+      const application = await withdrawApplication(jobId);
+      setMyApplication(application);
+      setApplyMessage("Application withdrawn.");
+      setActionMessage({ type: "success", text: "Application withdrawn." });
+    } catch (err: any) {
+      const message = err?.message || "Could not withdraw this application.";
+      setApplyError(message);
+      Alert.alert("Could not withdraw", message);
+    } finally {
+      setWithdrawingApplication(false);
+    }
+  }
+
   async function loadApplications() {
-    if (!jobId || !currentUserId || job?.poster_id !== currentUserId) return;
+    if (!jobId || !currentUserId || job?.poster_id !== currentUserId) {
+      setApplicationsError("Applications cannot be loaded for this account.");
+      return;
+    }
     try {
       setApplicationsLoading(true);
       setApplicationsError(null);
@@ -256,7 +360,10 @@ export default function JobDetailScreen() {
   }
 
   async function handleAcceptWorker(workerId: string, workerName: string) {
-    if (!jobId || !currentUserId) return;
+    if (!jobId || !currentUserId) {
+      setActionMessage({ type: "error", text: "Could not accept applicant because the job or user is missing." });
+      return;
+    }
     Alert.alert(
       "Accept this applicant?",
       `You are choosing ${workerName || "this person"} for this job. This will let you message each other to arrange the details.`,
@@ -275,11 +382,14 @@ export default function JobDetailScreen() {
               setStartTime(data.agreed_start_at || data.preferred_start_at || "");
               await loadApplications();
               setShowApplications(false);
+              setActionMessage({ type: "success", text: "Worker selected — applications are closed." });
               Alert.alert("Worker accepted!", "You can now message each other to finalise the job.", [
                 { text: "Open messages", onPress: () => router.push(`/app/messages/${conversation.id}`) },
               ]);
             } catch (err: any) {
-              Alert.alert("Could not accept", err?.message || "Something went wrong.");
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not accept", message);
             } finally {
               setAccepting(false);
               setAcceptingWorkerId(null);
@@ -291,7 +401,14 @@ export default function JobDetailScreen() {
   }
 
   function handleCancelJob() {
-    if (!jobId || job?.status === "cancelled") return;
+    if (!currentUserId || !isPoster) {
+      setActionMessage({ type: "error", text: "Only the signed-in poster can cancel this job." });
+      return;
+    }
+    if (!jobId || job?.status === "cancelled") {
+      setActionMessage({ type: "error", text: "This job cannot be cancelled from its current state." });
+      return;
+    }
     Alert.alert(
       "Cancel this job?",
       "This will close the job for new applicants. If you've already accepted someone, please message them first.",
@@ -303,13 +420,16 @@ export default function JobDetailScreen() {
           onPress: async () => {
             try {
               setCancelling(true);
-              await cancelJob(jobId, "Cancelled by poster");
-              const data = await getJob(jobId);
+              const data = await cancelJob(jobId, "Cancelled by poster");
               setJob(data);
               setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-              Alert.alert("Job cancelled", "This job is no longer open.");
+              setActionMessage({ type: "success", text: "Job cancelled." });
+              Alert.alert("Job cancelled", "This job is now cancelled. You can reopen it from this page if needed.");
             } catch (err: any) {
-              Alert.alert("Could not cancel", err?.message || "Something went wrong.");
+              console.log("Could not cancel job", err);
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not cancel", message);
             } finally {
               setCancelling(false);
             }
@@ -320,7 +440,10 @@ export default function JobDetailScreen() {
   }
 
   function handleLeaveJob() {
-    if (!jobId || !currentUserId || job?.accepted_worker_id !== currentUserId) return;
+    if (!jobId || !currentUserId || job?.accepted_worker_id !== currentUserId) {
+      setActionMessage({ type: "error", text: "You are not the selected worker for this job." });
+      return;
+    }
     Alert.alert(
       "Leave this job?",
       "This will remove you from the job. The poster will be notified.",
@@ -332,14 +455,18 @@ export default function JobDetailScreen() {
           onPress: async () => {
             try {
               setCancelling(true);
-              await leaveAcceptedJob(jobId, currentUserId);
-              await reopenApplicationsForJob(jobId, currentUserId);
-              const data = await getJob(jobId);
+              const data = await leaveAcceptedJob(jobId, currentUserId);
               setJob(data);
+              const application = await getMyApplicationForJob(jobId).catch(() => null);
+              setMyApplication(application);
               setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-              Alert.alert("Left job", "You have been removed from this job.");
+              setActionMessage({ type: "success", text: "You left the job and it has been reopened." });
+              Alert.alert("Left job", "You have been removed and the job is open again.");
             } catch (err: any) {
-              Alert.alert("Could not leave", err?.message || "Something went wrong.");
+              console.log("Could not leave job", err);
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not leave", message);
             } finally {
               setCancelling(false);
             }
@@ -360,10 +487,13 @@ export default function JobDetailScreen() {
   }
 
   async function handleSaveJobDetails() {
-    if (!jobId || !canEditJob) return;
+    if (!jobId || !canEditJob) {
+      setActionMessage({ type: "error", text: "This job cannot be edited from its current state." });
+      return;
+    }
     const parsedBudget = Number(editBudget);
-    if (!editTitle.trim() || !editDescription.trim() || !editBudget.trim() || !editPostcode.trim()) {
-      Alert.alert("Missing details", "Title, description, budget, and postcode are required.");
+    if (!editTitle.trim() || !editDescription.trim() || !editBudget.trim()) {
+      Alert.alert("Missing details", "Title, description, and budget are required.");
       return;
     }
     if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
@@ -391,7 +521,10 @@ export default function JobDetailScreen() {
   }
 
   function handleRemoveJob() {
-    if (!jobId || !canEditJob) return;
+    if (!jobId || !canEditJob) {
+      setActionMessage({ type: "error", text: "This job cannot be removed from its current state." });
+      return;
+    }
     Alert.alert(
       "Remove this job?",
       "This hides the job from your list and closes it to applicants.",
@@ -404,11 +537,14 @@ export default function JobDetailScreen() {
             try {
               setSavingJob(true);
               await removeJob(jobId);
+              setActionMessage({ type: "success", text: "Job removed." });
               Alert.alert("Job removed", "This job is no longer visible.", [
                 { text: "OK", onPress: () => router.replace("/app/my-jobs") },
               ]);
             } catch (err: any) {
-              Alert.alert("Could not remove job", err?.message || "Something went wrong.");
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not remove job", message);
             } finally {
               setSavingJob(false);
             }
@@ -419,26 +555,30 @@ export default function JobDetailScreen() {
   }
 
   function handleReport() {
-    const buttons: { text: string; style?: "cancel" }[] = REPORT_REASONS.map((r) => ({ text: r }));
-    buttons.push({ text: "Cancel", style: "cancel" as const });
-
+    if (!currentUserId) {
+      setActionMessage({ type: "error", text: "Sign in before reporting this job." });
+      Alert.alert("Sign in required", "Sign in before reporting this job.");
+      return;
+    }
+    setActionMessage({ type: "success", text: "Report noted locally for MVP. Please keep screenshots." });
     Alert.alert(
-      "Report this job",
-      "Why are you reporting this?",
-      buttons.map((b) => ({
-        ...b,
-        onPress: b.text === "Cancel" ? undefined : () => handleReportReason(b.text),
-      }))
+      "Report noted locally for MVP. Please keep screenshots and do not continue if unsafe."
     );
   }
 
   function handleReopenJob() {
-    if (!jobId || currentUserId !== job?.poster_id) return;
+    if (!jobId || currentUserId !== job?.poster_id) {
+      setActionMessage({ type: "error", text: "Only the poster can reopen this job." });
+      return;
+    }
     const isHeldReopen = job?.status === "held";
-    if (job?.status !== "cancelled" && !isHeldReopen) return;
+    if (job?.status !== "cancelled" && !isHeldReopen) {
+      setActionMessage({ type: "error", text: "This job cannot be reopened from its current state." });
+      return;
+    }
     Alert.alert(
-      isHeldReopen ? "Reopen applications?" : "Reopen this job?",
-      "This will make the job visible to applicants again and clear any accepted worker.",
+      "Reopen this job?",
+      "This will make the job visible to new applicants again and clear any accepted worker. Previous application rows may still need a Phase 2 database reset before the same worker can reapply.",
       [
         { text: isHeldReopen ? "Keep selected" : "Keep cancelled", style: "cancel" },
         {
@@ -447,14 +587,16 @@ export default function JobDetailScreen() {
             try {
               setCancelling(true);
               await reopenJob(jobId);
-              await reopenApplicationsForJob(jobId);
               const data = await getJob(jobId);
               setJob(data);
               setStartTime(data.agreed_start_at || data.preferred_start_at || "");
               await loadApplications();
+              setActionMessage({ type: "success", text: "Job reopened for applications." });
               Alert.alert("Job reopened", "This job is open for applications again.");
             } catch (err: any) {
-              Alert.alert("Could not reopen", err?.message || "Something went wrong.");
+              const message = err?.message || "Something went wrong.";
+              setActionMessage({ type: "error", text: message });
+              Alert.alert("Could not reopen", message);
             } finally {
               setCancelling(false);
             }
@@ -465,96 +607,104 @@ export default function JobDetailScreen() {
   }
 
   async function handleProposeStartTime() {
-    if (!jobId || !canManageStartTime || !startTime.trim()) return;
+    if (!jobId || !canManageStartTime) {
+      setActionMessage({ type: "error", text: "Start time cannot be proposed from this account or job state." });
+      return;
+    }
+    const proposedStartTime = buildStartTime(startDateOffset, startClockTime);
     try {
       setUpdatingStartTime(true);
-      await proposeJobStartTime(jobId, startTime.trim());
+      await proposeJobStartTime(jobId, proposedStartTime);
       const data = await getJob(jobId);
       setJob(data);
       setStartTime(data.agreed_start_at || "");
+      setActionMessage({ type: "success", text: "Start time proposed. Waiting for worker confirmation." });
       Alert.alert("Start time proposed", "The worker can now confirm the start time.");
     } catch (err: any) {
-      Alert.alert("Could not update start time", err?.message || "Something went wrong.");
+      const message = err?.message || "Something went wrong.";
+      setActionMessage({ type: "error", text: message });
+      Alert.alert("Could not update start time", message);
     } finally {
       setUpdatingStartTime(false);
     }
   }
 
   async function handleConfirmStartTime() {
-    if (!jobId || !currentUserId || !canConfirmStartTime) return;
+    if (!jobId || !currentUserId || !canConfirmStartTime) {
+      setActionMessage({ type: "error", text: "Start time cannot be confirmed from this account or job state." });
+      return;
+    }
     try {
       setUpdatingStartTime(true);
       await confirmJobStartTime(jobId, currentUserId);
       const data = await getJob(jobId);
       setJob(data);
       setStartTime(data.agreed_start_at || "");
+      setActionMessage({ type: "success", text: "Start time confirmed. Job is now in progress." });
       Alert.alert("Start time confirmed", "This job is now marked as in progress.");
     } catch (err: any) {
-      Alert.alert("Could not confirm start time", err?.message || "Something went wrong.");
+      const message = err?.message || "Something went wrong.";
+      setActionMessage({ type: "error", text: message });
+      Alert.alert("Could not confirm start time", message);
     } finally {
       setUpdatingStartTime(false);
     }
   }
 
   async function handleOpenConversation(workerId?: string) {
-    if (!jobId || !job?.poster_id || !workerId) return;
+    if (!currentUserId) {
+      setActionMessage({ type: "error", text: "Sign in before opening messages." });
+      Alert.alert("Sign in required", "Sign in before opening messages.");
+      return;
+    }
+    if (!jobId || !job?.poster_id || !workerId) {
+      setActionMessage({ type: "error", text: "Could not open chat because the job or worker is missing." });
+      return;
+    }
     try {
+      setOpeningConversation(true);
       const conversation = await createOrOpenConversation(jobId, job.poster_id, workerId);
       router.push(`/app/messages/${conversation.id}`);
     } catch (err: any) {
-      Alert.alert("Could not open messages", err?.message || "Something went wrong.");
-    }
-  }
-
-  function handleReportReason(reason: string) {
-    setReportModalReason(reason);
-    setReportDetails("");
-  }
-
-  async function submitJobReport() {
-    if (!jobId || !reportModalReason) return;
-
-    try {
-      setSubmittingReport(true);
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        Alert.alert("Sign in required", "You must be signed in to report a job.");
-        return;
-      }
-
-      const alreadyReported = await hasReported(jobId, user.id);
-      if (alreadyReported) {
-        Alert.alert("Already reported", "You've already reported this job.");
-        return;
-      }
-
-      await submitReport({
-        jobId,
-        reporterId: user.id,
-        reason: reportModalReason,
-        details: reportDetails.trim() || undefined,
-      });
-
-      setReportCount((c) => c + 1);
-      setReportModalReason(null);
-      Alert.alert("Thanks", "This has been reported and will be reviewed.");
-    } catch (err: any) {
-      if (err?.message?.includes("duplicate") || err?.code === "23505") {
-        Alert.alert("Already reported", "You've already reported this job.");
-      } else {
-        Alert.alert("Could not submit report", err?.message || "Something went wrong.");
-      }
+      const message = err?.message || "Something went wrong.";
+      setActionMessage({ type: "error", text: message });
+      Alert.alert("Could not open messages", message);
     } finally {
-      setSubmittingReport(false);
+      setOpeningConversation(false);
     }
   }
 
-  function handleImageError(index: number) {
-    setImageErrors((prev) => ({ ...prev, [index]: true }));
+  async function handleCompleteJob() {
+    if (!currentUserId || (!isPoster && !isSelectedWorker)) {
+      setActionMessage({ type: "error", text: "Sign in as the poster or selected helper to complete this job." });
+      return;
+    }
+    if (!jobId || !["in_progress"].includes(job?.status || "")) {
+      setActionMessage({ type: "error", text: "This job can only be completed once it is in progress." });
+      return;
+    }
+    Alert.alert("Complete this job?", "This marks the job completed and moves it out of active jobs.", [
+      { text: "Keep active", style: "cancel" },
+      {
+        text: "Complete",
+        onPress: async () => {
+          try {
+            setCompletingJob(true);
+            const data = await completeJob(jobId);
+            setJob(data);
+            setStartTime(data.agreed_start_at || data.preferred_start_at || "");
+            setActionMessage({ type: "success", text: "Job completed." });
+            Alert.alert("Job completed", "This job has moved to completed/cancelled history.");
+          } catch (err: any) {
+            const message = err?.message || "Could not complete this job.";
+            setActionMessage({ type: "error", text: message });
+            Alert.alert("Could not complete job", message);
+          } finally {
+            setCompletingJob(false);
+          }
+        },
+      },
+    ]);
   }
 
   if (loading) {
@@ -582,42 +732,12 @@ export default function JobDetailScreen() {
     );
   }
 
-  const images: string[] = (job as any)?.images || [];
-  const validImages = images.filter((uri, i) => !!uri && !imageErrors[i]);
-
   return (
     <>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backBtnText}>← Back</Text>
         </Pressable>
-
-        {validImages.length > 0 &&
-          (validImages.length === 1 ? (
-            <Image
-              source={{ uri: validImages[0] }}
-              style={styles.detailImage}
-              resizeMode="cover"
-              onError={() => handleImageError(images.indexOf(validImages[0]))}
-            />
-          ) : (
-            <ScrollView
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              style={styles.imageScroll}
-            >
-              {validImages.map((uri, i) => (
-                <Image
-                  key={`${uri}-${i}`}
-                  source={{ uri }}
-                  style={styles.detailImage}
-                  resizeMode="cover"
-                  onError={() => handleImageError(images.indexOf(uri))}
-                />
-              ))}
-            </ScrollView>
-          ))}
 
         <View style={styles.heroCard}>
           <View style={styles.titleRow}>
@@ -647,7 +767,7 @@ export default function JobDetailScreen() {
           </View>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Category</Text>
-            <Text style={styles.detailValue}>{job.category || "General"}</Text>
+            <Text style={styles.detailValue}>{normalizeCategory(job.category)}</Text>
           </View>
         </View>
 
@@ -659,6 +779,13 @@ export default function JobDetailScreen() {
           </Text>
         </View>
 
+        {isSignedIn && !isPoster && (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Travel estimate</Text>
+            <Text style={styles.noticeText}>{travelEstimateText}</Text>
+          </View>
+        )}
+
         <View style={styles.noticeCard}>
           <Text style={styles.noticeTitle}>Safety &amp; platform notice</Text>
           <Text style={styles.noticeText}>
@@ -669,12 +796,6 @@ export default function JobDetailScreen() {
           </Text>
         </View>
 
-        {reportCount >= 3 && (
-          <View style={styles.flaggedBanner}>
-            <Text style={styles.flaggedText}>This job has been flagged for review</Text>
-          </View>
-        )}
-
         {(job as any)?.status === "cancelled" && (
           <View style={styles.cancelledCard}>
             <Text style={styles.cancelledTitle}>Job cancelled</Text>
@@ -684,17 +805,33 @@ export default function JobDetailScreen() {
           </View>
         )}
 
+        {actionMessage && (
+          <View style={actionMessage.type === "success" ? styles.successBanner : styles.errorBanner}>
+            <Text style={actionMessage.type === "success" ? styles.successBannerText : styles.errorBannerText}>
+              {actionMessage.text}
+            </Text>
+          </View>
+        )}
+
+        {!isSignedIn && (
+          <SignInRequired title="Sign in for job actions" text="You can read job details while logged out. Sign in to apply, message, report, or manage this job." />
+        )}
+
         {isPoster && job.accepted_worker_id && (
           <View style={styles.acceptedCard}>
             <Text style={styles.acceptedTitle}>Selected helper: {selectedWorkerName}</Text>
             <Text style={styles.acceptedText}>{lifecycleHelp}</Text>
-            <Pressable style={styles.btn} onPress={() => handleOpenConversation(job.accepted_worker_id)}>
-              <Text style={styles.btnText}>Open Messages</Text>
+            <Pressable style={[styles.btn, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(job.accepted_worker_id)} disabled={openingConversation}>
+              {openingConversation ? (
+                <ActivityIndicator size="small" color="#140E1D" />
+              ) : (
+                <Text style={styles.btnText}>Open Messages</Text>
+              )}
             </Pressable>
           </View>
         )}
 
-        {(isPoster || isAcceptedWorker) && job.accepted_worker_id && (job as any)?.status !== "cancelled" && (
+        {(isPoster || isSelectedWorker) && job.accepted_worker_id && (job as any)?.status !== "cancelled" && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Start time</Text>
             <Text style={styles.bodyText}>
@@ -704,21 +841,44 @@ export default function JobDetailScreen() {
                   ? `Confirmed: ${formatStartTime(job.agreed_start_at)}`
                   : `Current plan: ${formatStartTime(job.agreed_start_at || job.preferred_start_at)}`}
             </Text>
+            {cancellationCutoff ? (
+              <Text style={styles.cutoffText}>Cancel before: {cancellationCutoff}</Text>
+            ) : null}
 
             {canManageStartTime && (
               <>
-                <TextInput
-                  style={styles.startInput}
-                  placeholder="e.g. Today 6pm or 2026-05-07 18:00"
-                  placeholderTextColor="#8D79AF"
-                  value={startTime}
-                  onChangeText={setStartTime}
-                  editable={!updatingStartTime}
-                />
+                <View style={styles.dateChipRow}>
+                  {DATE_CHIPS.map((chip) => (
+                    <Pressable
+                      key={chip.label}
+                      style={[styles.dateChip, startDateOffset === chip.offset && styles.dateChipActive]}
+                      onPress={() => setStartDateOffset(chip.offset)}
+                      disabled={updatingStartTime}
+                    >
+                      <Text style={[styles.dateChipText, startDateOffset === chip.offset && styles.dateChipTextActive]}>
+                        {chip.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timeScroll}>
+                  {TIME_OPTIONS.map((time) => (
+                    <Pressable
+                      key={time}
+                      style={[styles.timeChip, startClockTime === time && styles.timeChipActive]}
+                      onPress={() => setStartClockTime(time)}
+                      disabled={updatingStartTime}
+                    >
+                      <Text style={[styles.timeChipText, startClockTime === time && styles.timeChipTextActive]}>
+                        {time}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
                 <Pressable
-                  style={[styles.secondaryButton, (!startTime.trim() || updatingStartTime) && styles.secondaryButtonDisabled]}
+                  style={[styles.secondaryButton, updatingStartTime && styles.secondaryButtonDisabled]}
                   onPress={handleProposeStartTime}
-                  disabled={!startTime.trim() || updatingStartTime}
+                  disabled={updatingStartTime}
                 >
                   {updatingStartTime ? (
                     <ActivityIndicator size="small" color="#E7D9FF" />
@@ -745,7 +905,7 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {isPoster && (
+        {isPoster && !hasSelectedWorker && job.status === "open" && (
           <Pressable
             style={styles.btn}
             onPress={() => {
@@ -753,8 +913,15 @@ export default function JobDetailScreen() {
               setShowApplications(true);
             }}
           >
-            <Text style={styles.btnText}>View applications ({applications.length})</Text>
+          <Text style={styles.btnText}>View applications ({activeApplications.length})</Text>
           </Pressable>
+        )}
+
+        {isPoster && (hasSelectedWorker || ["held", "confirm_pending", "in_progress"].includes(job.status)) && (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Applications closed</Text>
+            <Text style={styles.noticeText}>Worker selected — applications are closed.</Text>
+          </View>
         )}
 
         {canEditJob && (
@@ -770,30 +937,84 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {isAcceptedWorker && (
+        {isSelectedWorker && (
           <View style={styles.acceptedCard}>
             <Text style={styles.acceptedTitle}>You are the accepted helper</Text>
             <Text style={styles.acceptedText}>{lifecycleHelp}</Text>
-            <Pressable style={styles.btn} onPress={() => handleOpenConversation(currentUserId)}>
-              <Text style={styles.btnText}>Open Messages</Text>
+            <Pressable style={[styles.btn, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(currentUserId || undefined)} disabled={openingConversation}>
+              {openingConversation ? (
+                <ActivityIndicator size="small" color="#140E1D" />
+              ) : (
+                <Text style={styles.btnText}>Open Messages</Text>
+              )}
             </Pressable>
           </View>
         )}
 
-        {!isPoster && !isAcceptedWorker && (
-          <Pressable
-            style={[styles.btn, ((job as any)?.status !== "open" || applying) && styles.btnDisabled]}
-            disabled={(job as any)?.status !== "open" || applying}
-            onPress={handleApply}
-          >
-            {applying ? (
-              <ActivityIndicator size="small" color="#140E1D" />
-            ) : (
-              <Text style={styles.btnText}>
-                {(job as any)?.status === "open" ? "Apply for this job" : "Applications closed"}
-              </Text>
-            )}
-          </Pressable>
+        {!isPoster && !isSelectedWorker && hasApplied && (
+          <View style={styles.acceptedCard}>
+            <Text style={styles.acceptedTitle}>Application sent</Text>
+            <Text style={styles.acceptedText}>The poster can review your application from their job page.</Text>
+            <Pressable
+              style={[styles.secondaryButton, withdrawingApplication && styles.secondaryButtonDisabled]}
+              onPress={handleWithdrawApplication}
+              disabled={withdrawingApplication}
+            >
+              <Text style={styles.secondaryButtonText}>{withdrawingApplication ? "Withdrawing..." : "Withdraw application"}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {!isPoster && !isSelectedWorker && applicationWithdrawn && (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Application withdrawn</Text>
+            <Text style={styles.noticeText}>This application has been cancelled from your side.</Text>
+          </View>
+        )}
+
+        {!isPoster && !isSelectedWorker && applyMessage && (
+          <Text style={styles.successText}>{applyMessage}</Text>
+        )}
+        {!isPoster && !isSelectedWorker && applyError && (
+          <Text style={styles.inlineErrorText}>{applyError}</Text>
+        )}
+
+        {isSignedIn && !isPoster && !isSelectedWorker && !hasApplied && !applicationWithdrawn && !applicationsClosed && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Apply</Text>
+            <TextInput
+              style={styles.applicationInput}
+              placeholder="Optional message to the poster"
+              placeholderTextColor="#8D79AF"
+              value={applicationMessage}
+              onChangeText={setApplicationMessage}
+              editable={!applying}
+              multiline
+              textAlignVertical="top"
+            />
+            <Pressable
+              style={[styles.btn, ((job as any)?.status !== "open" || applying) && styles.btnDisabled]}
+              disabled={(job as any)?.status !== "open" || applying}
+              onPress={handleApply}
+            >
+              {applying ? (
+                <ActivityIndicator size="small" color="#140E1D" />
+              ) : (
+                <Text style={styles.btnText}>
+                  {(job as any)?.status === "open" ? "Apply for this job" : "Applications closed"}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        )}
+
+        {!isPoster && !isSelectedWorker && !hasApplied && applicationsClosed && (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Applications closed</Text>
+            <Text style={styles.noticeText}>
+              {hasSelectedWorker ? "Worker selected — applications are closed." : "This job is no longer open for applications."}
+            </Text>
+          </View>
         )}
 
         {isPoster && (job as any)?.status === "cancelled" && (
@@ -804,22 +1025,41 @@ export default function JobDetailScreen() {
 
         {isPoster && (job as any)?.status === "held" && (
           <Pressable style={styles.secondaryButton} onPress={handleReopenJob} disabled={cancelling}>
-            <Text style={styles.secondaryButtonText}>{cancelling ? "Processing..." : "Reopen applications"}</Text>
+            <Text style={styles.secondaryButtonText}>{cancelling ? "Processing..." : "Reopen job"}</Text>
           </Pressable>
         )}
 
-        {(isPoster || isAcceptedWorker) && (job as any)?.status !== "cancelled" && (
+        {isPoster && (job as any)?.status === "in_progress" && (
+          <Pressable style={styles.btn} onPress={handleCompleteJob} disabled={completingJob}>
+            {completingJob ? (
+              <ActivityIndicator size="small" color="#140E1D" />
+            ) : (
+              <Text style={styles.btnText}>Complete job</Text>
+            )}
+          </Pressable>
+        )}
+
+        {isSelectedWorker && (job as any)?.status === "in_progress" && (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Completion</Text>
+            <Text style={styles.noticeText}>Ask the poster to mark this job completed. Worker-side completion needs the Phase 2 database/RLS helper.</Text>
+          </View>
+        )}
+
+        {(isPoster || isSelectedWorker) && (job as any)?.status !== "cancelled" && (job as any)?.status !== "completed" && (
           <Pressable style={styles.cancelButton} onPress={isPoster ? handleCancelJob : handleLeaveJob} disabled={cancelling}>
             <Text style={styles.cancelButtonText}>{cancelling ? "Processing..." : isPoster ? "Cancel job" : "Leave job"}</Text>
           </Pressable>
         )}
 
-        <Pressable style={styles.reportBtn} onPress={handleReport}>
-          <Text style={styles.reportBtnText}>Report this job</Text>
-        </Pressable>
+        {isSignedIn && (
+          <Pressable style={styles.reportBtn} onPress={handleReport}>
+            <Text style={styles.reportBtnText}>Report this job</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
-      {showApplications && (
+      {showApplications && job.status === "open" && !job.accepted_worker_id && (
         <Modal
           transparent
           visible
@@ -834,11 +1074,11 @@ export default function JobDetailScreen() {
                 <ActivityIndicator size="small" color="#B56CFF" />
               ) : applicationsError ? (
                 <Text style={styles.errorText}>{applicationsError}</Text>
-              ) : applications.length === 0 ? (
+              ) : activeApplications.length === 0 ? (
                 <Text style={styles.emptyText}>No applications yet.</Text>
               ) : (
                 <ScrollView style={styles.applicationsList}>
-                  {applications.map((application) => {
+                  {activeApplications.map((application) => {
                     const workerName = application.worker?.display_name || "Applicant";
                     const isSelected = application.status === "selected" || application.worker_id === job.accepted_worker_id;
                     const isAcceptingThisWorker = acceptingWorkerId === application.worker_id;
@@ -862,8 +1102,12 @@ export default function JobDetailScreen() {
                         ) : null}
 
                         {isSelected ? (
-                          <Pressable style={styles.acceptButton} onPress={() => handleOpenConversation(application.worker_id)}>
-                            <Text style={styles.acceptButtonText}>Open Messages</Text>
+                          <Pressable style={[styles.acceptButton, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(application.worker_id)} disabled={openingConversation}>
+                            {openingConversation ? (
+                              <ActivityIndicator size="small" color="#140E1D" />
+                            ) : (
+                              <Text style={styles.acceptButtonText}>Open Messages</Text>
+                            )}
                           </Pressable>
                         ) : (
                           <Pressable
@@ -974,54 +1218,6 @@ export default function JobDetailScreen() {
         </Modal>
       )}
 
-      {reportModalReason && (
-        <Modal
-          transparent
-          visible
-          animationType="fade"
-          onRequestClose={() => setReportModalReason(null)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Report: {reportModalReason}</Text>
-
-              <Text style={styles.modalLabel}>Extra details (optional)</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Add any extra information…"
-                placeholderTextColor="#8D79AF"
-                multiline
-                textAlignVertical="top"
-                value={reportDetails}
-                onChangeText={setReportDetails}
-                editable={!submittingReport}
-              />
-
-              <View style={styles.modalActions}>
-                <Pressable
-                  style={styles.modalCancel}
-                  onPress={() => setReportModalReason(null)}
-                  disabled={submittingReport}
-                >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.modalSubmit, submittingReport && styles.modalSubmitDisabled]}
-                  onPress={submitJobReport}
-                  disabled={submittingReport}
-                >
-                  {submittingReport ? (
-                    <ActivityIndicator size="small" color="#140E1D" />
-                  ) : (
-                    <Text style={styles.modalSubmitText}>Submit report</Text>
-                  )}
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
     </>
   );
 }
@@ -1060,6 +1256,58 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20,
   },
+  inlineErrorText: {
+    color: "#FFD8DE",
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  successText: {
+    color: "#C8F7D2",
+    backgroundColor: "#102619",
+    borderColor: "#2F7A45",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  successBanner: {
+    backgroundColor: "#102619",
+    borderColor: "#2F7A45",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  successBannerText: {
+    color: "#C8F7D2",
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
+  errorBanner: {
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  errorBannerText: {
+    color: "#FFD8DE",
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
   backBtn: {
     marginBottom: 16,
   },
@@ -1067,16 +1315,6 @@ const styles = StyleSheet.create({
     color: "#B56CFF",
     fontSize: 15,
     fontWeight: "700",
-  },
-  imageScroll: {
-    marginBottom: 12,
-  },
-  detailImage: {
-    width: "100%",
-    aspectRatio: 16 / 10,
-    borderRadius: 16,
-    backgroundColor: "#1A1025",
-    marginRight: 10,
   },
   heroCard: {
     backgroundColor: "#171024",
@@ -1141,6 +1379,13 @@ const styles = StyleSheet.create({
     color: "#CBB8F1",
     fontSize: 15,
     lineHeight: 22,
+  },
+  cutoffText: {
+    color: "#FFB347",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "800",
+    marginTop: 6,
   },
   detailRow: {
     flexDirection: "row",
@@ -1269,6 +1514,18 @@ const styles = StyleSheet.create({
     color: "#E7D9FF",
     fontSize: 15,
   },
+  applicationInput: {
+    backgroundColor: "#0E0A14",
+    borderWidth: 1,
+    borderColor: "#3A2B52",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#E7D9FF",
+    fontSize: 15,
+    minHeight: 78,
+    textAlignVertical: "top",
+  },
   startInput: {
     backgroundColor: "#0E0A14",
     borderWidth: 1,
@@ -1278,6 +1535,56 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     color: "#E7D9FF",
     fontSize: 15,
+  },
+  dateChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  dateChip: {
+    backgroundColor: "#0E0A14",
+    borderWidth: 1,
+    borderColor: "#3A2B52",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  dateChipActive: {
+    borderColor: "#B56CFF",
+    backgroundColor: "#2A1E3D",
+  },
+  dateChipText: {
+    color: "#A590C9",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  dateChipTextActive: {
+    color: "#E7D9FF",
+  },
+  timeScroll: {
+    marginTop: 10,
+  },
+  timeChip: {
+    backgroundColor: "#0E0A14",
+    borderWidth: 1,
+    borderColor: "#3A2B52",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  timeChipActive: {
+    borderColor: "#B56CFF",
+    backgroundColor: "#2A1E3D",
+  },
+  timeChipText: {
+    color: "#A590C9",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  timeChipTextActive: {
+    color: "#E7D9FF",
   },
   secondaryButton: {
     borderWidth: 1,

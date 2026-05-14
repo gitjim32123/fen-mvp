@@ -1,69 +1,92 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { launchImageLibraryAsync } from "expo-image-picker";
-import { postJob, uploadJobImages } from "../../lib/jobs";
-import { scoreBusinessAdRisk } from "../../lib/moderation";
+import { postJob } from "../../lib/jobs";
+import { supabase } from "../../lib/supabase";
+import { checkJobSafety, scoreBusinessAdRisk } from "../../lib/moderation";
 import { checkRepeatPosting } from "../../lib/spam";
 import { addStrike, getStrikeCount } from "../../lib/auth";
-import { supabase } from "../../lib/supabase";
+import { estimateMiles, estimateTravelMinutes, geocodePostcode, roundToFive } from "../../lib/geocoding";
+import { SignInRequired } from "../../components/ui/Premium";
+import { CATEGORY_OPTIONS, type JobCategory } from "../../lib/categories";
 
 type Urgency = "Need now" | "Today" | "Flexible";
 
-type Category =
-  | "Moving Item"
-  | "Moving Items"
-  | "Collection & Delivery"
-  | "Garden & Outdoor"
-  | "Cleaning"
-  | "Assembly"
-  | "Painting & Decorating"
-  | "Other";
+type Category = JobCategory;
 
-const MOVING_CATEGORIES: Category[] = ["Moving Item", "Moving Items", "Collection & Delivery"];
+const TRAVEL_CATEGORIES: Category[] = ["Delivery / collection"];
 
 function isMovingCategory(cat: Category): boolean {
-  return MOVING_CATEGORIES.includes(cat);
+  return cat === "Moving / lifting";
+}
+
+function needsTravelPostcodes(cat: Category, title: string, description: string) {
+  const text = `${title} ${description}`.toLowerCase();
+  if (/\b(one room|same room|another room|upstairs|downstairs|inside|within (the )?(house|flat|home))\b/.test(text)) {
+    return false;
+  }
+  if (TRAVEL_CATEGORIES.includes(cat)) {
+    return /\b(from|to|deliver|delivery|collect|collection|pick ?up|drop ?off|transport|between)\b/.test(text);
+  }
+  if (isMovingCategory(cat)) {
+    return /\b(new address|another address|between addresses|house to house|flat to flat|pick ?up|drop ?off|transport|deliver|delivery|collect|collection)\b/.test(text);
+  }
+  return false;
 }
 
 const SUGGESTIONS: Record<string, { description: string; budget: number; category: Category }> = {
-  move: { description: "Help moving furniture or heavy items. Please be careful and reliable.", budget: 25, category: "Moving Item" },
-  sofa: { description: "Help moving a sofa. Need someone strong and careful with handling.", budget: 25, category: "Moving Item" },
-  fridge: { description: "Help moving a fridge or large appliance. Two people recommended.", budget: 30, category: "Moving Item" },
-  wardrobe: { description: "Help moving a wardrobe or bulky furniture item.", budget: 25, category: "Moving Item" },
-  bed: { description: "Help moving a bed or mattress. Disassembly may be needed.", budget: 25, category: "Moving Item" },
-  piano: { description: "Help moving a piano. Needs care and at least two people.", budget: 40, category: "Moving Item" },
-  "moving help": { description: "Small moving help needed. Packing or lifting assistance for a few items.", budget: 30, category: "Moving Items" },
-  "small move": { description: "Help with a small move. Moving a few boxes or items to a new address.", budget: 25, category: "Moving Items" },
-  garden: { description: "Garden tidy-up needed. Mowing, weeding, and general clearing.", budget: 40, category: "Garden & Outdoor" },
-  gardening: { description: "General gardening help. Weeding, planting, or lawn care.", budget: 40, category: "Garden & Outdoor" },
-  lawn: { description: "Lawn mowing and garden tidy-up needed.", budget: 35, category: "Garden & Outdoor" },
-  weed: { description: "Weeding and garden clearing needed. Basic tools provided.", budget: 30, category: "Garden & Outdoor" },
-  hedge: { description: "Hedge trimming and garden tidy-up.", budget: 35, category: "Garden & Outdoor" },
-  collect: { description: "Collect and drop off a parcel. Must have own transport.", budget: 15, category: "Collection & Delivery" },
-  parcel: { description: "Collect a parcel and drop it off at the given address.", budget: 15, category: "Collection & Delivery" },
-  delivery: { description: "Pick up and deliver an item. Own transport required.", budget: 20, category: "Collection & Delivery" },
-  "pick up": { description: "Pick up an item from a given location and deliver it.", budget: 18, category: "Collection & Delivery" },
-  shop: { description: "Help with shopping. Collect items and deliver to the address.", budget: 20, category: "Collection & Delivery" },
-  shopping: { description: "Help with a shopping trip. Collect items and deliver.", budget: 20, category: "Collection & Delivery" },
-  dog: { description: "Dog walking needed. Take good care of the dog and bring it back safely.", budget: 15, category: "Other" },
-  "dog walk": { description: "Dog walking needed. Friendly and reliable help required.", budget: 15, category: "Other" },
-  walk: { description: "Dog walking or pet sitting needed. Take good care of the animal.", budget: 15, category: "Other" },
-  pet: { description: "Pet care help needed. Walking, feeding, or sitting.", budget: 15, category: "Other" },
-  clean: { description: "Light cleaning and tidying of indoor space.", budget: 30, category: "Cleaning" },
-  cleaning: { description: "General cleaning of a home or room. Basic supplies provided.", budget: 35, category: "Cleaning" },
+  "collect sofa": { description: "Help collecting or moving a sofa. Large item handling needed.", budget: 40, category: "Moving / lifting" },
+  "sofa pickup": { description: "Help picking up and moving a sofa. Large item handling needed.", budget: 40, category: "Moving / lifting" },
+  move: { description: "Help moving furniture or heavy items. Please be careful and reliable.", budget: 25, category: "Moving / lifting" },
+  sofa: { description: "Help moving a sofa. Need someone strong and careful with handling.", budget: 40, category: "Moving / lifting" },
+  fridge: { description: "Help moving a fridge or large appliance. Two people recommended.", budget: 40, category: "Moving / lifting" },
+  wardrobe: { description: "Help moving a wardrobe or bulky furniture item.", budget: 35, category: "Moving / lifting" },
+  bed: { description: "Help moving a bed or mattress. Disassembly may be needed.", budget: 30, category: "Moving / lifting" },
+  piano: { description: "Help moving a piano. Needs care and at least two people.", budget: 60, category: "Moving / lifting" },
+  "moving help": { description: "Small moving help needed. Packing or lifting assistance for a few items.", budget: 30, category: "Moving / lifting" },
+  "small move": { description: "Help with a small move. Moving a few boxes or items to a new address.", budget: 25, category: "Moving / lifting" },
+  "man with van": { description: "Moving or lifting help requested. Keep this as a one-off help request, not a service advert.", budget: 35, category: "Moving / lifting" },
+  "man in van": { description: "Moving or lifting help requested. Keep this as a one-off help request, not a service advert.", budget: 35, category: "Moving / lifting" },
+  garden: { description: "Garden tidy-up needed. Mowing, weeding, and general clearing.", budget: 25, category: "Garden & Outdoor" },
+  gardening: { description: "General gardening help. Weeding, planting, or lawn care.", budget: 25, category: "Garden & Outdoor" },
+  lawn: { description: "Lawn mowing and quick garden tidy-up needed.", budget: 20, category: "Garden & Outdoor" },
+  weed: { description: "Weeding and light garden clearing needed. Basic tools provided.", budget: 20, category: "Garden & Outdoor" },
+  hedge: { description: "Hedge trimming and garden tidy-up.", budget: 30, category: "Garden & Outdoor" },
+  "collect parcel": { description: "Collect a parcel and drop it off nearby. Must have suitable transport.", budget: 15, category: "Delivery / collection" },
+  "deliver parcel": { description: "Pick up and deliver a parcel. Must have suitable transport.", budget: 15, category: "Delivery / collection" },
+  collect: { description: "Collect and drop off a small item. Must have suitable transport.", budget: 15, category: "Delivery / collection" },
+  parcel: { description: "Collect a parcel and drop it off at the given address.", budget: 15, category: "Delivery / collection" },
+  delivery: { description: "Pick up and deliver an item. Own transport required.", budget: 20, category: "Delivery / collection" },
+  "pick up": { description: "Pick up an item from a given location and deliver it.", budget: 20, category: "Delivery / collection" },
+  shop: { description: "Help with shopping. Collect items and deliver to the address.", budget: 20, category: "Shopping & Errands" },
+  shopping: { description: "Help with a shopping trip. Collect items and deliver.", budget: 20, category: "Shopping & Errands" },
+  errand: { description: "Local errand help needed. Collect, drop off, or sort a small task nearby.", budget: 20, category: "Shopping & Errands" },
+  dog: { description: "Dog walking needed. Take good care of the dog and bring it back safely.", budget: 15, category: "Dog Walking" },
+  "dog walk": { description: "Dog walking needed. Friendly and reliable help required.", budget: 15, category: "Dog Walking" },
+  walk: { description: "Dog walking or pet sitting needed. Take good care of the animal.", budget: 15, category: "Dog Walking" },
+  pet: { description: "Pet care help needed. Walking, feeding, or sitting.", budget: 15, category: "Dog Walking" },
+  clean: { description: "Light cleaning and tidying of indoor space.", budget: 20, category: "Cleaning" },
+  cleaning: { description: "General cleaning of a home or room. Basic supplies provided.", budget: 25, category: "Cleaning" },
   "deep clean": { description: "Deep cleaning of a property. All equipment provided.", budget: 50, category: "Cleaning" },
-  paint: { description: "Painting a room or small area. Bring your own brushes if possible.", budget: 45, category: "Painting & Decorating" },
-  decorating: { description: "Decorating help needed. Painting or wallpapering assistance.", budget: 45, category: "Painting & Decorating" },
+  paint: { description: "Painting a room or small area. Bring your own brushes if possible.", budget: 45, category: "Decorating & Basic DIY" },
+  decorating: { description: "Decorating help needed. Painting or wallpapering assistance.", budget: 45, category: "Decorating & Basic DIY" },
+  diy: { description: "Basic DIY help needed for a small non-regulated household task.", budget: 35, category: "Decorating & Basic DIY" },
   flat: { description: "Flat pack assembly. Instructions will be provided.", budget: 35, category: "Assembly" },
   assemble: { description: "Assembly of furniture or equipment. Basic tools needed.", budget: 35, category: "Assembly" },
   furniture: { description: "Furniture assembly needed. All parts and tools provided.", budget: 35, category: "Assembly" },
   ikea: { description: "IKEA or flat-pack furniture assembly. Instructions available.", budget: 35, category: "Assembly" },
   shelf: { description: "Fitting or assembling shelves. Basic tools helpful.", budget: 25, category: "Assembly" },
-  tech: { description: "Tech help needed. Computer, Wi-Fi, or device setup assistance.", budget: 30, category: "Other" },
-  computer: { description: "Computer or laptop help. Setup, troubleshooting, or installation.", budget: 35, category: "Other" },
-  wifi: { description: "Wi-Fi or internet setup help needed. Router configuration and troubleshooting.", budget: 25, category: "Other" },
+  tech: { description: "Tech help needed. Computer, Wi-Fi, or device setup assistance.", budget: 30, category: "Coding & Tech Help" },
+  coding: { description: "Coding or tech help needed for a small task. Explain the issue and what outcome you need.", budget: 30, category: "Coding & Tech Help" },
+  computer: { description: "Computer or laptop help. Setup, troubleshooting, or installation.", budget: 25, category: "Coding & Tech Help" },
+  wifi: { description: "Wi-Fi or internet setup help needed. Router configuration and troubleshooting.", budget: 25, category: "Coding & Tech Help" },
+  admin: { description: "Admin help needed for a small one-off task such as organising files or data entry.", budget: 30, category: "Business & Admin" },
+  "keep company": { description: "Companionship help needed for a short visit. Keep arrangements clear and safe.", budget: 20, category: "Companionship & Errands" },
+  companionship: { description: "Companionship or social support needed for a short local visit.", budget: 20, category: "Companionship & Errands" },
+  "sit with": { description: "Sit with someone for a short visit and provide friendly company.", budget: 20, category: "Companionship & Errands" },
+  "social support": { description: "Simple companionship or social support for a short time.", budget: 20, category: "Companionship & Errands" },
   handyman: { description: "Odd jobs and small repairs around the house. Basic tools helpful.", budget: 30, category: "Other" },
   "odd job": { description: "Odd jobs and small tasks around the home. Flexible with what needs doing.", budget: 25, category: "Other" },
   repair: { description: "Small repair job needed. Tools provided or welcome.", budget: 30, category: "Other" },
@@ -88,26 +111,23 @@ function detectCategory(title: string): { category: Category; description: strin
   return null;
 }
 
-function hashPostcode(pc: string): number {
-  let h = 0;
-  for (let i = 0; i < pc.length; i++) h = ((h << 5) - h + pc.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
-function estimateDistanceMiles(from: string, to: string): number {
-  if (!from.trim() || !to.trim()) return 0;
-  const h1 = hashPostcode(from.toUpperCase());
-  const h2 = hashPostcode(to.toUpperCase());
-  const diff = Math.abs(h1 - h2);
-  return Math.max(0.5, (diff % 20) + 0.5);
-}
-
-function calcMovingPrice(baseBudget: number, fromPostcode: string, toPostcode: string): { estimate: string; miles: number } | null {
-  if (!fromPostcode.trim() || !toPostcode.trim()) return null;
-  const miles = estimateDistanceMiles(fromPostcode, toPostcode);
-  const distCost = Math.round(miles * 1.5);
-  const total = baseBudget + distCost;
-  return { estimate: `~£${total}`, miles };
+function suggestBudget(category: Category, titleText: string, baseBudget: number, miles?: number) {
+  const text = titleText.toLowerCase();
+  let budget = baseBudget;
+  if (category === "Moving / lifting" && /\b(sofa|fridge|wardrobe|piano|large|heavy)\b/.test(text)) {
+    budget = Math.max(budget, 40);
+  }
+  if (category === "Delivery / collection" && /\b(parcel|small)\b/.test(text)) {
+    budget = Math.min(budget, 20);
+  }
+  if (typeof miles === "number" && miles > 0) {
+    const uplift =
+      category === "Moving / lifting" ? Math.min(25, miles * 1.5) :
+      category === "Delivery / collection" ? Math.min(15, miles) :
+      0;
+    budget += uplift;
+  }
+  return roundToFive(budget);
 }
 
 export default function PostScreen() {
@@ -115,6 +135,7 @@ export default function PostScreen() {
   const [detectedCategory, setDetectedCategory] = useState<Category>("Other");
   const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
+  const [locationPostcode, setLocationPostcode] = useState("");
   const [fromPostcode, setFromPostcode] = useState("");
   const [toPostcode, setToPostcode] = useState("");
   const [urgency, setUrgency] = useState<Urgency>("Need now");
@@ -124,24 +145,44 @@ export default function PostScreen() {
   const [aiSuggesting, setAiSuggesting] = useState(false);
   const [aiSuggested, setAiSuggested] = useState(false);
   const [moderationWarning, setModerationWarning] = useState<string | null>(null);
+  const [moderationBlock, setModerationBlock] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
-  const [imageUploading, setImageUploading] = useState(false);
-  const [uploadSessionId, setUploadSessionId] = useState<string>("");
+  const [categoryOverridden, setCategoryOverridden] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [travelEstimate, setTravelEstimate] = useState<{ miles: number; suggestedBudget: number; minutes: number } | null>(null);
+  const [travelEstimateStatus, setTravelEstimateStatus] = useState<string | null>(null);
 
-  const showPostcodes = isMovingCategory(detectedCategory);
+  const showPostcodes = needsTravelPostcodes(detectedCategory, title, description);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
+      setCurrentUserId(data.user?.id ?? null);
+      setAuthChecked(true);
+    }).catch(() => {
+      if (!active) return;
+      setCurrentUserId(null);
+      setAuthChecked(true);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!title.trim()) {
-      setDetectedCategory("Other");
+      if (!categoryOverridden) setDetectedCategory("Other");
       return;
     }
+    if (categoryOverridden) return;
     const detected = detectCategory(title);
     if (detected) {
       setDetectedCategory(detected.category);
     } else {
       setDetectedCategory("Other");
     }
-  }, [title]);
+  }, [title, categoryOverridden]);
 
   useEffect(() => {
     if (!title.trim() || title.trim().length < 4) return;
@@ -153,25 +194,36 @@ export default function PostScreen() {
           setDescription(detected.description);
         }
         if (!budget.trim()) {
-          let budgetVal = detected.budget;
-          if (isMovingCategory(detected.category)) {
-            budgetVal = Math.round(budgetVal * 1.2);
-          }
+          const budgetVal = suggestBudget(detected.category, title, detected.budget);
           setBudget(String(budgetVal));
         }
-        setDetectedCategory(detected.category);
+        if (!categoryOverridden) {
+          setDetectedCategory(detected.category);
+        }
         setAiSuggested(true);
       }
     }, 800);
     return () => clearTimeout(timer);
-  }, [title]);
+  }, [title, categoryOverridden]);
 
   useEffect(() => {
-    if (description.length < 25) {
+    if ((title + description).trim().length < 8) {
       setModerationWarning(null);
+      setModerationBlock(null);
       return;
     }
     const timer = setTimeout(() => {
+      const safety = checkJobSafety({ title, description });
+      if (safety.action === "block") {
+        setModerationBlock(safety.reason || "This job is not allowed on FEN MVP.");
+        setModerationWarning(null);
+        return;
+      }
+      setModerationBlock(null);
+      if (safety.action === "warn") {
+        setModerationWarning("FEN is for one-off local help, not professional service adverts or regulated trade work.");
+        return;
+      }
       const result = scoreBusinessAdRisk({ title, description });
       if (result.action === "warn" || result.action === "block") {
         setModerationWarning("This looks like a business/service advert. FEN is for one-off local jobs.");
@@ -182,50 +234,99 @@ export default function PostScreen() {
     return () => clearTimeout(timer);
   }, [title, description]);
 
-  const movingEstimate = useMemo(() => {
-    if (!showPostcodes) return null;
-    const base = budget.trim() ? parseFloat(budget) : 0;
-    if (base <= 0) return null;
-    return calcMovingPrice(base, fromPostcode, toPostcode);
-  }, [showPostcodes, budget, fromPostcode, toPostcode]);
+  useEffect(() => {
+    if (!showPostcodes) {
+      setTravelEstimate(null);
+      setTravelEstimateStatus(null);
+      return;
+    }
+    if (!fromPostcode.trim() || !toPostcode.trim()) {
+      setTravelEstimate(null);
+      setTravelEstimateStatus(null);
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        setTravelEstimateStatus("Checking travel estimate...");
+        const [fromPoint, toPoint] = await Promise.all([
+          geocodePostcode(fromPostcode),
+          geocodePostcode(toPostcode),
+        ]);
+        if (!active) return;
+        if (!fromPoint || !toPoint) {
+          setTravelEstimate(null);
+          setTravelEstimateStatus("Travel estimate unavailable until both postcodes are valid.");
+          return;
+        }
+        const miles = estimateMiles(fromPoint, toPoint);
+        const minutes = estimateTravelMinutes(miles);
+        const detected = detectCategory(title);
+        const baseBudget = Number.isFinite(Number(budget)) && Number(budget) > 0
+          ? Number(budget)
+          : detected?.budget ?? 20;
+        setTravelEstimate({
+          miles,
+          minutes,
+          suggestedBudget: suggestBudget(detectedCategory, title, baseBudget, miles),
+        });
+        setTravelEstimateStatus(null);
+      } catch {
+        if (!active) return;
+        setTravelEstimate(null);
+        setTravelEstimateStatus("Travel estimate unavailable until both locations are known.");
+      }
+    }, 500);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [showPostcodes, fromPostcode, toPostcode, budget, title, detectedCategory]);
+
+  const movingEstimate = travelEstimate
+    ? { estimate: `~£${travelEstimate.suggestedBudget}`, miles: travelEstimate.miles, minutes: travelEstimate.minutes }
+    : null;
 
   async function handleAiSuggest() {
     if (!title.trim()) {
-      Alert.alert("Enter a title first", "AI needs a job title to suggest a description and budget.");
+      setPostError("Enter a title first so FEN can suggest details.");
+      Alert.alert("Enter a title first", "FEN needs a job title to suggest a description and budget.");
       return;
     }
+    setPostError(null);
     setAiSuggesting(true);
     await new Promise((r) => setTimeout(r, 600));
     const detected = detectCategory(title);
     if (detected) {
-      let budgetVal = detected.budget;
-      if (isMovingCategory(detected.category)) {
-        budgetVal = Math.round(budgetVal * 1.2);
-      }
+      const budgetVal = suggestBudget(detected.category, title, detected.budget, travelEstimate?.miles);
       setDescription(detected.description);
       setBudget(String(budgetVal));
       setDetectedCategory(detected.category);
+      setCategoryOverridden(false);
       setAiSuggested(true);
     } else {
       setDescription("");
       setBudget("");
       setAiSuggested(false);
+      setPostError("No suggestion available. Try a more specific job title.");
       Alert.alert("No suggestion available", "Try a more specific job title like 'Help move a sofa' or 'Garden tidy-up'.");
     }
     setAiSuggesting(false);
   }
 
   async function handleAddPhotos() {
-    const { status, assets } = await launchImageLibraryAsync({
+    const result = await launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsMultipleSelection: true,
       quality: 0.7,
       selectionLimit: Math.max(0, 3 - selectedImages.length),
     });
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow photo access in your device settings.");
+    if ((result as any).canceled || (result as any).status === "cancelled") {
       return;
     }
+    const assets = result.assets;
     if (!assets?.length) return;
     const newUris = assets
       .filter((a) => {
@@ -240,81 +341,113 @@ export default function PostScreen() {
     setSelectedImages((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function handleSelectCategory(category: Category) {
+    setDetectedCategory(category);
+    setCategoryOverridden(true);
+  }
+
   async function submitJob() {
     try {
       setPosting(true);
+      setPostError(null);
       const postcodeValue = showPostcodes
         ? `${fromPostcode.trim().toUpperCase()} → ${toPostcode.trim().toUpperCase()}`
-        : "N/A";
-      let imageUrls: string[] = [];
+        : locationPostcode.trim().toUpperCase();
       if (selectedImages.length > 0) {
-        setImageUploading(true);
-        const sessionId = `job_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id ?? "anon";
-        const { urls, failedCount } = await uploadJobImages(selectedImages, sessionId, userId);
-        setImageUploading(false);
-        if (failedCount === selectedImages.length) {
-          Alert.alert("Image upload failed", "Photos could not be uploaded. Please try again or post without photos.", [
-            { text: "Try again", style: "cancel" },
-            { text: "Post without photos", onPress: () => doPost(postcodeValue, []) },
-          ]);
-          setPosting(false);
-          return;
-        }
-        imageUrls = urls;
-        if (failedCount > 0) {
-          Alert.alert("Some photos could not be uploaded", `${selectedImages.length - failedCount} of ${selectedImages.length} photos were uploaded.`, [
-            { text: "Continue", onPress: () => doPost(postcodeValue, imageUrls) },
-          ]);
-          return;
-        }
+        console.log("FEN MVP: photos selected but not submitted because photo uploads are preview-only.");
       }
-      await doPost(postcodeValue, imageUrls);
+      await doPost(postcodeValue);
     } catch (err: any) {
-      Alert.alert("Could not post", err?.message || "Something went wrong.");
+      const message = err?.message || "Something went wrong.";
+      console.log("Could not post job", message, err);
+      setPostError(message);
+      Alert.alert("Could not post", message);
       setPosting(false);
-      setImageUploading(false);
     }
   }
 
-  async function doPost(postcodeValue: string, imageUrls: string[]) {
-    await postJob({
+  async function doPost(postcodeValue: string) {
+    const primaryPostcode = showPostcodes ? fromPostcode.trim() : locationPostcode.trim();
+    const jobPoint = primaryPostcode ? await geocodePostcode(primaryPostcode).catch(() => null) : null;
+    const job = await postJob({
       title: title.trim(),
       description: description.trim(),
-      budget_gbp: parseFloat(budget),
+      budget_gbp: roundToFive(parseFloat(budget)),
       postcode: postcodeValue,
+      category: detectedCategory,
       urgency,
       tools_supplied: toolsSupplied,
       preferred_start_at: preferredTime.trim() || undefined,
-      images: imageUrls,
+      lat: jobPoint?.latitude,
+      lng: jobPoint?.longitude,
     });
     Alert.alert("Job posted", "Your job is now live for nearby workers to see.", [
-      { text: "OK", onPress: () => router.replace("/app/my-jobs") },
+      { text: "View job", onPress: () => router.replace(`/app/job/${job.id}`) },
+      { text: "My Jobs", onPress: () => router.replace("/app/my-jobs") },
     ]);
     setPosting(false);
-    setImageUploading(false);
   }
 
   async function handlePost() {
+    setPostError(null);
+    if (!currentUserId) {
+      setPostError("Sign in before posting a job.");
+      Alert.alert("Sign in required", "Sign in before posting a job.");
+      return;
+    }
     if (!title.trim() || !description.trim() || !budget.trim()) {
+      setPostError("Fill in title, description, and budget.");
       Alert.alert("Missing details", "Fill in title, description, and budget.");
+      return;
+    }
+    const parsedBudget = Number(budget);
+    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
+      setPostError("Enter a valid budget in GBP. Budgets are rounded to the nearest £5.");
+      Alert.alert("Invalid budget", "Enter a valid budget in GBP. Budgets are rounded to the nearest £5.");
+      return;
+    }
+    if (moderationBlock) {
+      setPostError(moderationBlock);
+      Alert.alert("Post not allowed", moderationBlock);
       return;
     }
     if (showPostcodes) {
       if (!fromPostcode.trim() || !toPostcode.trim()) {
+        setPostError("Moving jobs need a from and to postcode so workers can estimate distance.");
         Alert.alert("Postcodes required", "Moving jobs need a from and to postcode so workers can estimate distance.");
         return;
       }
     }
     const strikes = await getStrikeCount().catch(() => 0);
     if (strikes >= 3) {
+      setPostError("Posting is temporarily restricted after repeated business advert attempts.");
       Alert.alert("Posting restricted", "You've attempted to post business adverts multiple times. Posting is temporarily restricted.");
+      return;
+    }
+    const safetyResult = checkJobSafety({ title, description });
+    if (safetyResult.action === "block") {
+      const message = safetyResult.reason || "This job is not allowed on FEN MVP.";
+      setPostError(message);
+      Alert.alert("Post not allowed", message);
+      return;
+    }
+    if (safetyResult.action === "warn") {
+      const warning = "FEN is for one-off local help, not professional service adverts or regulated trade work.";
+      setPostError(`${warning} Please rewrite it as a one-off help request.`);
+      Alert.alert(
+        "Check your post",
+        `${warning} Please rewrite it as a one-off help request.`,
+        [
+          { text: "Edit", style: "cancel" },
+          { text: "Post anyway", onPress: submitJob },
+        ]
+      );
       return;
     }
     const modResult = scoreBusinessAdRisk({ title, description });
     if (modResult.action === "block") {
       await addStrike().catch(() => {});
+      setPostError("This looks like business advertising. FEN is for local one-off jobs, not commercial promotion.");
       Alert.alert(
         "Post not allowed",
         "This looks like business advertising. FEN is for local one-off jobs, not commercial promotion."
@@ -322,6 +455,7 @@ export default function PostScreen() {
       return;
     }
     if (modResult.action === "warn") {
+      setPostError("Your post looks like a business advert. Please rewrite it as a one-off local job or help request.");
       Alert.alert(
         "Check your post",
         "Your post looks like a business advert. Please rewrite it as a one-off local job or help request.",
@@ -334,6 +468,7 @@ export default function PostScreen() {
     }
     const spamResult = await checkRepeatPosting(title, description);
     if (spamResult.action === "block") {
+      setPostError("This post appears to be a repeat or spam repost of a recent listing.");
       Alert.alert(
         "Post not allowed",
         "This post appears to be a repeat or spam repost of a recent listing."
@@ -341,6 +476,7 @@ export default function PostScreen() {
       return;
     }
     if (spamResult.action === "warn") {
+      setPostError("This looks very similar to one of your recent posts. Only repost if this is genuinely a new job.");
       Alert.alert(
         "Similar to recent posts",
         "This looks very similar to one of your recent posts. Please only repost if this is genuinely a new job.",
@@ -354,7 +490,24 @@ export default function PostScreen() {
     await submitJob();
   }
 
-  const canPost = title.trim() && description.trim() && budget.trim() && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting && !imageUploading;
+  const canPost = title.trim() && description.trim() && budget.trim() && !moderationBlock && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting;
+
+  if (!authChecked) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#B56CFF" />
+        <Text style={styles.loadingText}>Checking sign in…</Text>
+      </View>
+    );
+  }
+
+  if (!currentUserId) {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <SignInRequired title="Sign in to post" text="You need to sign in before creating a job on FEN." />
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -370,13 +523,31 @@ export default function PostScreen() {
         </View>
       )}
 
+      <View style={styles.categorySection}>
+        <Text style={styles.label}>Category</Text>
+        <View style={styles.categoryRow}>
+          {CATEGORY_OPTIONS.map((category) => (
+            <Pressable
+              key={category}
+              style={[styles.categoryChip, detectedCategory === category && styles.categoryChipActive]}
+              onPress={() => handleSelectCategory(category)}
+              disabled={posting}
+            >
+              <Text style={[styles.categoryChipText, detectedCategory === category && styles.categoryChipTextActive]}>
+                {category}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
       <Pressable style={[styles.aiButton, aiSuggesting && styles.disabledButton]} onPress={handleAiSuggest} disabled={aiSuggesting}>
         {aiSuggesting ? (
           <ActivityIndicator size="small" color="#B56CFF" />
         ) : (
           <>
             <Ionicons name="sparkles" size={16} color="#B56CFF" />
-            <Text style={styles.aiButtonText}>AI suggest description &amp; budget</Text>
+            <Text style={styles.aiButtonText}>Suggest description &amp; budget</Text>
           </>
         )}
       </Pressable>
@@ -388,14 +559,17 @@ export default function PostScreen() {
         multiline
         textAlignVertical="top"
         value={description}
-        onChangeText={(text) => { setDescription(text); setAiSuggested(false); }}
+        onChangeText={(text: string) => { setDescription(text); setAiSuggested(false); }}
       />
 
       {moderationWarning && (
         <Text style={styles.warningText}>{moderationWarning}</Text>
       )}
+      {moderationBlock && (
+        <Text style={styles.blockText}>{moderationBlock}</Text>
+      )}
 
-      <TextInput placeholder="Budget in GBP" placeholderTextColor="#8D79AF" style={[styles.input, aiSuggested && styles.aiFilled]} keyboardType="numeric" value={budget} onChangeText={(text) => { setBudget(text); setAiSuggested(false); }} />
+      <TextInput placeholder="Budget in GBP" placeholderTextColor="#8D79AF" style={[styles.input, aiSuggested && styles.aiFilled]} keyboardType="numeric" value={budget} onChangeText={(text: string) => { setBudget(text); setAiSuggested(false); }} />
 
       {showPostcodes ? (
         <>
@@ -404,13 +578,27 @@ export default function PostScreen() {
           {movingEstimate ? (
             <View style={styles.estimateCard}>
               <Ionicons name="navigate" size={14} color="#B56CFF" />
-              <Text style={styles.estimateText}>Estimated price: {movingEstimate.estimate} · approx {movingEstimate.miles.toFixed(1)} miles</Text>
+              <Text style={styles.estimateText}>Suggested offer: {movingEstimate.estimate} · approx travel distance {movingEstimate.miles.toFixed(1)} miles · about {movingEstimate.minutes} min</Text>
             </View>
+          ) : travelEstimateStatus ? (
+            <Text style={styles.postcodeHint}>{travelEstimateStatus}</Text>
           ) : (
             <Text style={styles.postcodeHint}>Enter both postcodes to see an estimated price</Text>
           )}
         </>
-      ) : null}
+      ) : (
+        <>
+          <TextInput
+            placeholder="Area or postcode (optional)"
+            placeholderTextColor="#8D79AF"
+            style={styles.input}
+            autoCapitalize="characters"
+            value={locationPostcode}
+            onChangeText={setLocationPostcode}
+          />
+          <Text style={styles.postcodeHint}>General jobs can be posted without a postcode, but adding an area improves travel estimates.</Text>
+        </>
+      )}
 
       <View style={styles.row}>
         <View style={styles.flex}>
@@ -449,23 +637,23 @@ export default function PostScreen() {
       )}
 
       {selectedImages.length < 3 && (
-        <Pressable style={styles.addPhotosButton} onPress={handleAddPhotos} disabled={posting || imageUploading}>
+        <Pressable style={styles.addPhotosButton} onPress={handleAddPhotos} disabled={posting}>
           <Ionicons name="camera-outline" size={18} color="#B56CFF" />
           <Text style={styles.addPhotosText}>Add photos (optional)</Text>
         </Pressable>
       )}
 
-      {imageUploading && (
-        <View style={styles.uploadIndicator}>
-          <ActivityIndicator size="small" color="#B56CFF" />
-          <Text style={styles.uploadText}>Uploading photos…</Text>
-        </View>
+      {postError && (
+        <Text style={styles.blockText}>{postError}</Text>
       )}
 
       <Text style={styles.photoHint}>Add photos to help others understand the job (avoid logos or adverts)</Text>
+      {selectedImages.length > 0 ? (
+        <Text style={styles.photoNotice}>Photos are preview-only in this MVP and won’t be uploaded yet.</Text>
+      ) : null}
 
       <View style={styles.notice}>
-        <Text style={styles.noticeTitle}>AI suggestions are guidance only</Text>
+        <Text style={styles.noticeTitle}>Suggestions are guidance only</Text>
         <Text style={styles.noticeText}>Final job details, pricing, and arrangements are chosen by the users. FEN does not process payments — any money is agreed and exchanged directly between users.</Text>
       </View>
 
@@ -474,7 +662,7 @@ export default function PostScreen() {
       </View>
 
       <Pressable style={[styles.primaryButton, !canPost && styles.disabledButton]} onPress={handlePost} disabled={!canPost}>
-        {(posting || imageUploading) ? (
+        {posting ? (
           <ActivityIndicator size="small" color="#140E1D" />
         ) : (
           <Text style={styles.primaryButtonText}>Post job</Text>
@@ -521,6 +709,35 @@ const styles = StyleSheet.create({
     color: "#E7D9FF",
     fontSize: 13,
     fontWeight: "700",
+  },
+  categorySection: {
+    gap: 10,
+  },
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  categoryChip: {
+    backgroundColor: "#171024",
+    borderColor: "#231A33",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  categoryChipActive: {
+    backgroundColor: "#2A1E3D",
+    borderColor: "#B56CFF",
+  },
+  categoryChipText: {
+    color: "#CBB8F1",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  categoryChipTextActive: {
+    color: "#F0E2FF",
+    fontWeight: "800",
   },
   aiButton: {
     flexDirection: "row",
@@ -675,6 +892,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
   },
+  blockText: {
+    color: "#FFD8DE",
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   policyNotice: {
     backgroundColor: "#1A1025",
     borderWidth: 1,
@@ -689,16 +917,16 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     marginTop: -6,
   },
-  uploadIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 4,
-  },
-  uploadText: {
-    color: "#B56CFF",
+  photoNotice: {
+    color: "#FFD8DE",
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 13,
-    fontWeight: "700",
+    lineHeight: 18,
   },
   thumbScroll: {
     flexDirection: "row",
@@ -761,5 +989,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 17,
     fontWeight: "800",
+  },
+  centered: {
+    flex: 1,
+    backgroundColor: "#0E0A14",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  loadingText: {
+    color: "#CBB8F1",
+    fontSize: 15,
+    marginTop: 12,
   },
 });

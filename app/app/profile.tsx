@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { getProfile, signOut, updateProfile } from "../../lib/auth";
+import { supabase } from "../../lib/supabase";
 import type { Profile } from "../../lib/types";
 import type { TransportMode } from "../../lib/types";
+import { InfoMetric, SignInRequired, TrustBanner } from "../../components/ui/Premium";
 
 const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
   { value: "walk", label: "Walk" },
   { value: "cycle", label: "Cycle" },
   { value: "drive", label: "Drive" },
   { value: "public_transport", label: "Public transport" },
+  { value: "unspecified", label: "Not sure" },
 ];
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -28,13 +31,24 @@ export default function ProfileScreen() {
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editPostcode, setEditPostcode] = useState("");
   const [editBio, setEditBio] = useState("");
-  const [editTransport, setEditTransport] = useState<TransportMode>("walk");
+  const [editTransport, setEditTransport] = useState<TransportMode>("unspecified");
   const [saving, setSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     let active = true;
     async function load() {
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!active) return;
+        if (!user) {
+          setCurrentUserId(null);
+          setProfile(null);
+          return;
+        }
+        setCurrentUserId(user.id);
         const data = await getProfile();
         if (!active) return;
         setProfile(data);
@@ -42,11 +56,12 @@ export default function ProfileScreen() {
           setEditDisplayName(data.display_name || "");
           setEditPostcode(data.postcode || "");
           setEditBio(data.bio || "");
-          setEditTransport(data.transport_mode || "walk");
+          setEditTransport(data.transport_mode || "unspecified");
         }
-      } catch {
+      } catch (err: any) {
         if (!active) return;
         setProfile(null);
+        setActionMessage({ type: "error", text: err?.message || "Could not load your profile." });
       } finally {
         if (active) setLoading(false);
       }
@@ -57,10 +72,16 @@ export default function ProfileScreen() {
 
   async function handleLogout() {
     try {
+      setActionMessage(null);
+      setLoggingOut(true);
       await signOut();
       router.replace("/auth/sign-in");
     } catch (err: any) {
-      Alert.alert("Could not sign out", err?.message || "Try again.");
+      const message = err?.message || "Try again.";
+      setActionMessage({ type: "error", text: message });
+      Alert.alert("Could not sign out", message);
+    } finally {
+      setLoggingOut(false);
     }
   }
 
@@ -69,13 +90,20 @@ export default function ProfileScreen() {
       setEditDisplayName(profile.display_name || "");
       setEditPostcode(profile.postcode || "");
       setEditBio(profile.bio || "");
-      setEditTransport(profile.transport_mode || "walk");
+      setEditTransport(profile.transport_mode || "unspecified");
     }
     setEditing(true);
   }
 
   async function handleSave() {
+    setActionMessage(null);
+    if (!currentUserId) {
+      setActionMessage({ type: "error", text: "Sign in before updating your profile." });
+      Alert.alert("Sign in required", "Sign in before updating your profile.");
+      return;
+    }
     if (!editDisplayName.trim()) {
+      setActionMessage({ type: "error", text: "Enter a display name." });
       Alert.alert("Name required", "Enter a display name.");
       return;
     }
@@ -84,15 +112,18 @@ export default function ProfileScreen() {
       await updateProfile({
         display_name: editDisplayName.trim(),
         postcode: editPostcode.trim().toUpperCase(),
-        bio: editBio.trim() || undefined,
+        bio: editBio.trim() || null,
         transport_mode: editTransport,
       });
       const updated = await getProfile();
       setProfile(updated);
       setEditing(false);
+      setActionMessage({ type: "success", text: "Your profile has been updated." });
       Alert.alert("Saved", "Your profile has been updated.");
     } catch (err: any) {
-      Alert.alert("Could not save", err?.message || "Try again.");
+      const message = err?.message || "Try again.";
+      setActionMessage({ type: "error", text: message });
+      Alert.alert("Could not save", message);
     } finally {
       setSaving(false);
     }
@@ -103,6 +134,12 @@ export default function ProfileScreen() {
     : profile?.transport_mode === "drive" ? "Drive"
     : profile?.transport_mode === "public_transport" ? "Public transport"
     : "Unspecified";
+  const completeness = [
+    profile?.display_name,
+    profile?.postcode,
+    profile?.bio,
+    profile?.transport_mode && profile.transport_mode !== "unspecified",
+  ].filter(Boolean).length;
 
   if (loading) {
     return (
@@ -113,10 +150,24 @@ export default function ProfileScreen() {
     );
   }
 
+  if (!currentUserId) {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <SignInRequired title="Sign in to view profile" text="Your profile, account details, and settings are only available after sign-in." />
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Profile</Text>
       <Text style={styles.subtitle}>Keep your details simple and easy to update.</Text>
+
+      {actionMessage ? (
+        <Text style={actionMessage.type === "success" ? styles.successText : styles.inlineErrorText}>
+          {actionMessage.text}
+        </Text>
+      ) : null}
 
       {editing ? (
         <>
@@ -135,7 +186,7 @@ export default function ProfileScreen() {
             <TextInput
               style={styles.fieldInput}
               value={editPostcode}
-              onChangeText={(v) => setEditPostcode(v.toUpperCase())}
+              onChangeText={(v: string) => setEditPostcode(v.toUpperCase())}
               placeholder="e.g. SW1A 1AA"
               placeholderTextColor="#8D79AF"
               autoCapitalize="characters"
@@ -188,6 +239,12 @@ export default function ProfileScreen() {
             <Text style={styles.bio}>{profile?.bio || "No bio yet."}</Text>
           </View>
 
+          <View style={styles.metricsRow}>
+            <InfoMetric label="Profile" value={`${Math.round((completeness / 4) * 100)}%`} />
+            <InfoMetric label="Completed" value={String(profile?.completed_jobs_count ?? 0)} />
+            <InfoMetric label="Plan" value={profile?.plan_tier === "worker_plus" ? "Plus" : "Free"} />
+          </View>
+
           <View style={styles.card}>
             <InfoRow label="Display name" value={profile?.display_name || "—"} />
             <InfoRow label="Postcode" value={profile?.postcode || "—"} />
@@ -202,17 +259,19 @@ export default function ProfileScreen() {
         </>
       )}
 
-      <View style={styles.trustCard}>
-        <Text style={styles.trustTitle}>About FEN</Text>
-        <Text style={styles.trustText}>FEN connects people who need local help with people nearby who can help. FEN is a platform — it does not provide, guarantee, or supervise the work itself.</Text>
-        <Text style={styles.trustText}>Users are responsible for their own safety. Always meet in safe, public-feeling places and use your own judgement.</Text>
-        <Text style={styles.trustText}>FEN does not process payments in MVP. Any money is agreed and exchanged directly between users.</Text>
-        <Text style={styles.trustText}>FEN is not liable for disputes, losses, or cancellations between users. You are responsible for any jobs you post, accept, or cancel.</Text>
-        <Text style={styles.trustText}>Subscription tiers such as Worker Plus may be introduced later. Your current plan is shown above.</Text>
+      <TrustBanner title="About FEN">
+        FEN connects people for local jobs. It does not provide the work, employ helpers, or process payments in MVP.
+      </TrustBanner>
+
+      <View style={styles.legalRow}>
+        <Pressable onPress={() => router.push("/legal/terms")}><Text style={styles.legalLink}>Terms</Text></Pressable>
+        <Pressable onPress={() => router.push("/legal/privacy")}><Text style={styles.legalLink}>Privacy</Text></Pressable>
+        <Pressable onPress={() => router.push("/legal/safety")}><Text style={styles.legalLink}>Safety</Text></Pressable>
+        <Pressable onPress={() => router.push("/legal/payments")}><Text style={styles.legalLink}>Payments</Text></Pressable>
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={handleLogout}>
-        <Text style={styles.primaryButtonText}>Logout</Text>
+      <Pressable style={[styles.primaryButton, loggingOut && styles.disabledButton]} onPress={handleLogout} disabled={loggingOut}>
+        {loggingOut ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Logout</Text>}
       </Pressable>
     </ScrollView>
   );
@@ -276,6 +335,11 @@ const styles = StyleSheet.create({
     color: "#E7D9FF",
     fontSize: 16,
     fontWeight: "700",
+  },
+  metricsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
   },
   secondaryButton: {
     backgroundColor: "#171024",
@@ -366,6 +430,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 12,
   },
+  inlineErrorText: {
+    color: "#FFD8DE",
+    backgroundColor: "#2B161B",
+    borderColor: "#8E4656",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  successText: {
+    color: "#C8F7D2",
+    backgroundColor: "#102619",
+    borderColor: "#2F7A45",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   trustCard: {
     backgroundColor: "#20172E",
     borderWidth: 1,
@@ -383,5 +469,15 @@ const styles = StyleSheet.create({
     color: "#CBB8F1",
     fontSize: 14,
     lineHeight: 20,
+  },
+  legalRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  legalLink: {
+    color: "#B56CFF",
+    fontSize: 13,
+    fontWeight: "800",
   },
 });

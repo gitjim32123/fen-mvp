@@ -35,7 +35,9 @@ export type Job = {
   accepted_worker_id?: string;
   tools_supplied: boolean;
   cancel_reason?: string;
-  images?: string[];
+  deleted_at?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   created_at: string;
   updated_at: string;
 };
