@@ -6,6 +6,8 @@ import { theme } from '../components/ui/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+const NATIVE_INTRO_FALLBACK_MS = 30000;
+
 function AppShell() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }}>
@@ -44,7 +46,10 @@ function NativeIntroShell() {
 
   const [videoHasFinished, setVideoHasFinished] = useState(false);
   const splashHiddenRef = useRef(false);
+  const introFinishedRef = useRef(false);
   const finishIntro = useCallback(() => {
+    if (introFinishedRef.current) return;
+    introFinishedRef.current = true;
     if (!splashHiddenRef.current) {
       splashHiddenRef.current = true;
       SplashScreen.hideAsync().catch(() => {});
@@ -64,7 +69,7 @@ function NativeIntroShell() {
 
   useEffect(() => {
     if (videoHasFinished) return;
-    const timer = setTimeout(finishIntro, 6500);
+    const timer = setTimeout(finishIntro, NATIVE_INTRO_FALLBACK_MS);
     return () => clearTimeout(timer);
   }, [finishIntro, videoHasFinished]);
 
@@ -77,6 +82,8 @@ function NativeIntroShell() {
       finishIntro();
     }
   });
+
+  useEventListener(player, 'playToEnd', finishIntro);
 
   useEventListener(player, 'timeUpdate', ({ currentTime }: { currentTime: number }) => {
     const duration = player.duration ?? 0;

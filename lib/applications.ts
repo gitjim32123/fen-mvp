@@ -16,14 +16,8 @@ export async function applyToJob(jobId: string, message?: string) {
   if (job?.status !== "open") throw new Error("This job is no longer open for applications.");
 
   const existing = await getMyApplicationForJob(jobId);
-  if (existing && existing.status !== "withdrawn") {
-    if (existing.status === "selected") {
-      throw new Error("This previous selected application cannot be reset from app code yet. Phase 2 needs a database/RLS helper before the same worker can reapply.");
-    }
+  if (existing?.status === "applied") {
     throw new Error("You've already applied for this job.");
-  }
-  if (existing?.status === "withdrawn") {
-    throw new Error("This previous application cannot be reopened yet. Try another open job for now.");
   }
 
   const canApply = await supabase.rpc("can_apply_to_job", { p_job_id: jobId });
@@ -32,13 +26,10 @@ export async function applyToJob(jobId: string, message?: string) {
     throw new Error("This job is no longer available for applications, or your application limit/profile status prevents applying.");
   }
 
-  const write = supabase
-    .from("applications")
-    .insert([{ job_id: jobId, worker_id: user.id, message }])
-    .select()
-    .single();
-
-  const { data, error } = await write;
+  const { data, error } = await supabase.rpc("apply_to_job", {
+    p_job_id: jobId,
+    p_message: message ?? null,
+  });
 
   if (error) {
     if (error.code === "23505" || error.message?.toLowerCase().includes("duplicate")) {
