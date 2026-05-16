@@ -286,12 +286,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: "#E7D9FF",
     fontSize: 18,
+    lineHeight: 23,
     fontWeight: "800",
     marginTop: 10,
   },
   headerSubtitle: {
     color: "#B56CFF",
     fontSize: 13,
+    lineHeight: 18,
     fontWeight: "700",
     marginTop: 4,
   },
@@ -314,11 +316,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    maxWidth: "100%",
   },
   smallButtonText: {
     color: "#E7D9FF",
     fontSize: 13,
+    lineHeight: 17,
     fontWeight: "800",
+    textAlign: "center",
   },
   safetyBanner: {
     backgroundColor: "#20172E",
@@ -372,7 +377,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   messageBubble: {
-    maxWidth: "80%",
+    maxWidth: "86%",
     padding: 12,
     borderRadius: 16,
   },
@@ -419,6 +424,7 @@ const styles = StyleSheet.create({
   },
   composerRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
   },
   sendError: {
@@ -427,6 +433,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 190,
     backgroundColor: "#171024",
     borderWidth: 1,
     borderColor: "#3A2B52",
@@ -440,7 +447,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#B56CFF",
     borderRadius: 12,
     paddingHorizontal: 16,
+    minHeight: 42,
+    minWidth: 84,
     justifyContent: "center",
+    alignItems: "center",
   },
   sendButtonDisabled: {
     opacity: 0.5,
@@ -448,6 +458,7 @@ const styles = StyleSheet.create({
   sendButtonText: {
     color: "#140E1D",
     fontSize: 15,
+    lineHeight: 19,
     fontWeight: "800",
   },
   centered: {

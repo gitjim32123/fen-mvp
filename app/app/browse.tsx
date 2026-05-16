@@ -275,6 +275,9 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 100,
     gap: 14,
+    width: "100%",
+    maxWidth: 820,
+    alignSelf: "center",
   },
   title: {
     color: "#E7D9FF",
@@ -330,6 +333,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    maxWidth: "100%",
   },
   filterChipActive: {
     borderColor: "#B56CFF",
@@ -342,6 +346,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    maxWidth: "100%",
   },
   selectableChipActive: {
     borderColor: "#B56CFF",
@@ -350,6 +355,7 @@ const styles = StyleSheet.create({
   selectableChipText: {
     color: "#CBB8F1",
     fontSize: 13,
+    lineHeight: 17,
     fontWeight: "700",
   },
   selectableChipTextActive: {
@@ -359,6 +365,7 @@ const styles = StyleSheet.create({
   filterText: {
     color: "#CBB8F1",
     fontSize: 13,
+    lineHeight: 17,
     fontWeight: "700",
   },
   filterTextActive: {

@@ -626,10 +626,14 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 110,
     gap: 14,
+    width: "100%",
+    maxWidth: 820,
+    alignSelf: "center",
   },
   title: {
     color: "#E7D9FF",
-    fontSize: 30,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: "800",
     marginTop: 8,
   },
@@ -657,11 +661,13 @@ const styles = StyleSheet.create({
   },
   rowTop: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     gap: 12,
   },
   cardTitle: {
     flex: 1,
+    minWidth: 180,
     color: "#E7D9FF",
     fontSize: 17,
     fontWeight: "800",
@@ -670,6 +676,7 @@ const styles = StyleSheet.create({
     color: "#B56CFF",
     fontSize: 17,
     fontWeight: "800",
+    flexShrink: 0,
   },
   applicantText: {
     color: "#B56CFF",
@@ -692,11 +699,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   actionButtonText: {
     color: "#E7D9FF",
     textAlign: "center",
     fontSize: 15,
+    lineHeight: 19,
     fontWeight: "800",
   },
   cancelButton: {
@@ -705,11 +714,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   cancelButtonText: {
     color: "#FFD8DE",
     textAlign: "center",
     fontSize: 14,
+    lineHeight: 18,
     fontWeight: "800",
   },
   removeButton: {
@@ -718,11 +729,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   removeButtonText: {
     color: "#CBB8F1",
     textAlign: "center",
     fontSize: 14,
+    lineHeight: 18,
     fontWeight: "800",
   },
   clearButton: {

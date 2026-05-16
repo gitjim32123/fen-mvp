@@ -55,6 +55,7 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "flex-start",
     padding: 16,
@@ -63,6 +64,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
+    minWidth: 180,
     color: "#E7D9FF",
     fontSize: 18,
     fontWeight: "800",
@@ -71,6 +73,7 @@ const styles = StyleSheet.create({
     color: "#B56CFF",
     fontSize: 18,
     fontWeight: "800",
+    flexShrink: 0,
   },
   chipRow: {
     flexDirection: "row",
@@ -93,6 +96,7 @@ const styles = StyleSheet.create({
   meta: {
     color: "#CBB8F1",
     fontSize: 14,
+    flexShrink: 1,
   },
   travelRow: {
     flexDirection: "row",
@@ -104,6 +108,7 @@ const styles = StyleSheet.create({
     color: "#B56CFF",
     fontSize: 13,
     fontWeight: "700",
+    flex: 1,
   },
   button: {
     marginTop: 10,
@@ -117,6 +122,7 @@ const styles = StyleSheet.create({
     color: "#140E1D",
     textAlign: "center",
     fontSize: 15,
+    lineHeight: 19,
     fontWeight: "800",
   },
 });

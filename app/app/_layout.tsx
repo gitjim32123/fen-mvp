@@ -36,6 +36,15 @@ function AppTabs({ summary }: { summary: ActivitySummary }) {
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.subtle,
         tabBarLabelStyle: { fontSize: 12, fontWeight: "700" },
+        tabBarBadgeStyle: {
+          minWidth: 18,
+          height: 18,
+          borderRadius: 9,
+          fontSize: 10,
+          fontWeight: "800",
+          backgroundColor: theme.colors.accent,
+          color: theme.colors.accentText,
+        },
         sceneStyle: { backgroundColor: theme.colors.bg },
       }}
     >

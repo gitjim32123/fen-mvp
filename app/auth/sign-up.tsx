@@ -161,10 +161,13 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    padding: 24,
+    padding: 20,
     justifyContent: "center",
     alignItems: "center",
     gap: 14,
+    width: "100%",
+    maxWidth: 560,
+    alignSelf: "center",
   },
   icon: {
     width: 48,
@@ -174,7 +177,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 31,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: "800",
   },
   subtitle: {
@@ -229,6 +233,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    maxWidth: "100%",
   },
   optionChipActive: {
     borderColor: colors.accent,
@@ -237,7 +242,9 @@ const styles = StyleSheet.create({
   optionChipText: {
     color: colors.muted,
     fontSize: 13,
+    lineHeight: 17,
     fontWeight: "700",
+    textAlign: "center",
   },
   optionChipTextActive: {
     color: colors.text,
@@ -298,6 +305,7 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     flexDirection: "row",
     flexWrap: "wrap",
+    justifyContent: "center",
     gap: 12,
   },
   legalLink: {
@@ -338,7 +346,8 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#140E1D",
     textAlign: "center",
-    fontSize: 17,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: "800",
   },
   disabledButton: {

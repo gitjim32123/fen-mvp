@@ -1256,6 +1256,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
+    width: "100%",
+    maxWidth: 820,
+    alignSelf: "center",
   },
   centered: {
     flex: 1,
@@ -1352,21 +1355,25 @@ const styles = StyleSheet.create({
   },
   titleRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 10,
+    gap: 8,
   },
   title: {
     color: "#E7D9FF",
     fontSize: 20,
+    lineHeight: 25,
     fontWeight: "800",
     flex: 1,
-    marginRight: 8,
+    minWidth: 190,
   },
   budget: {
     color: "#B56CFF",
     fontSize: 18,
     fontWeight: "800",
+    flexShrink: 0,
   },
   statusBadge: {
     alignSelf: "flex-start",
@@ -1415,8 +1422,10 @@ const styles = StyleSheet.create({
   },
   detailRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     paddingVertical: 6,
+    gap: 6,
     borderBottomWidth: 1,
     borderBottomColor: "#231A33",
   },
@@ -1429,6 +1438,8 @@ const styles = StyleSheet.create({
     color: "#E7D9FF",
     fontSize: 13,
     fontWeight: "700",
+    flexShrink: 1,
+    textAlign: "right",
   },
   noticeCard: {
     backgroundColor: "#20172E",
@@ -1453,6 +1464,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#B56CFF",
     borderRadius: 16,
     paddingVertical: 14,
+    paddingHorizontal: 14,
     alignItems: "center",
   },
   btnDisabled: {
@@ -1617,6 +1629,7 @@ const styles = StyleSheet.create({
     borderColor: "#6E46A3",
     borderRadius: 12,
     paddingVertical: 12,
+    paddingHorizontal: 12,
     alignItems: "center",
     marginTop: 10,
   },
@@ -1626,15 +1639,19 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: "#E7D9FF",
     fontSize: 15,
+    lineHeight: 19,
     fontWeight: "800",
+    textAlign: "center",
   },
   modalActions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     marginTop: 4,
   },
   modalCancel: {
     flex: 1,
+    minWidth: 120,
     borderWidth: 1,
     borderColor: "#3A2B52",
     borderRadius: 12,
@@ -1648,6 +1665,7 @@ const styles = StyleSheet.create({
   },
   modalSubmit: {
     flex: 1,
+    minWidth: 120,
     backgroundColor: "#B56CFF",
     borderRadius: 12,
     paddingVertical: 12,
@@ -1674,8 +1692,10 @@ modalSubmitDisabled: {
   },
   applicationHeader: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
     marginBottom: 8,
   },
   applicationName: {

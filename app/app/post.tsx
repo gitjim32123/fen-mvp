@@ -706,10 +706,14 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 110,
     gap: 14,
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
   },
   title: {
     color: "#E7D9FF",
-    fontSize: 30,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: "800",
     marginTop: 8,
   },
@@ -750,6 +754,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    maxWidth: "100%",
   },
   categoryChipActive: {
     backgroundColor: "#2A1E3D",
@@ -758,6 +763,7 @@ const styles = StyleSheet.create({
   categoryChipText: {
     color: "#CBB8F1",
     fontSize: 13,
+    lineHeight: 17,
     fontWeight: "700",
   },
   categoryChipTextActive: {
@@ -766,6 +772,7 @@ const styles = StyleSheet.create({
   },
   aiButton: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#171024",
@@ -778,7 +785,10 @@ const styles = StyleSheet.create({
   aiButtonText: {
     color: "#B56CFF",
     fontSize: 14,
+    lineHeight: 18,
     fontWeight: "700",
+    textAlign: "center",
+    flexShrink: 1,
   },
   aiFilled: {
     borderColor: "#5B3A87",
@@ -812,6 +822,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     flex: 1,
+    minWidth: 0,
   },
   postcodeHint: {
     color: "#A590C9",
@@ -874,6 +885,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 16,
   },
@@ -993,6 +1005,7 @@ const styles = StyleSheet.create({
   },
   addPhotosButton: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#171024",
@@ -1005,7 +1018,9 @@ const styles = StyleSheet.create({
   addPhotosText: {
     color: "#B56CFF",
     fontSize: 14,
+    lineHeight: 18,
     fontWeight: "700",
+    textAlign: "center",
   },
   policyText: {
     color: "#A590C9",
@@ -1024,7 +1039,8 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#140E1D",
     textAlign: "center",
-    fontSize: 17,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: "800",
   },
   centered: {

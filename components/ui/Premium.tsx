@@ -95,7 +95,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: theme.colors.text,
-    fontSize: 30,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: "800",
   },
   subtitle: {
@@ -144,6 +145,7 @@ const styles = StyleSheet.create({
     color: theme.colors.muted,
     fontSize: 14,
     lineHeight: 20,
+    flexShrink: 1,
   },
   empty: {
     alignItems: "center",
@@ -165,7 +167,7 @@ const styles = StyleSheet.create({
   },
   metric: {
     flex: 1,
-    minWidth: 90,
+    minWidth: 132,
     backgroundColor: theme.colors.bg,
     borderColor: theme.colors.border,
     borderWidth: 1,

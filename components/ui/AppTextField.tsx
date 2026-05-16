@@ -21,7 +21,7 @@ export default function AppTextField({ label, hint, style, ...props }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 8 },
+  wrap: { gap: 8, alignSelf: "stretch" },
   label: { color: theme.colors.text, fontSize: 15, fontWeight: "800" },
   input: {
     backgroundColor: theme.colors.surface,
@@ -32,6 +32,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     color: theme.colors.text,
     fontSize: 16,
+    minWidth: 0,
   },
   multiline: { minHeight: 110, textAlignVertical: "top" },
   hint: { color: theme.colors.subtle, fontSize: 13, lineHeight: 18 },
