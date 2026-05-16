@@ -6,6 +6,8 @@ export type SpamCheckResult = {
   action: "allow" | "warn" | "block";
 };
 
+const ACTIVE_JOB_STATUSES = ["open", "held", "confirm_pending", "in_progress"];
+
 function tokenize(text: string): Set<string> {
   return new Set(
     text
@@ -55,9 +57,10 @@ export async function checkRepeatPosting(
 
   const { data: recentJobs } = await supabase
     .from("jobs")
-    .select("id, title, description")
+    .select("id, title, description, status")
     .eq("poster_id", user.id)
     .is("deleted_at", null)
+    .in("status", ACTIVE_JOB_STATUSES)
     .gte("created_at", fourteenDaysAgo.toISOString());
 
   if (!recentJobs || recentJobs.length === 0) {

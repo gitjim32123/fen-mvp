@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { archiveInactiveConversations, getConversationLifecycle, getConversations } from "../../../lib/messaging";
+import { archiveInactiveConversations, filterActiveConversations, getConversationLifecycle, getConversations } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation } from "../../../lib/types";
 import { SignInRequired } from "../../../components/ui/Premium";
@@ -101,17 +101,9 @@ export default function MessagesScreen() {
   }, [loadConversations]);
 
   async function handleClearOldChats() {
-    const oldConversations = conversations.filter(
-      (conv) => conv.is_archived || conv.job?.status === "cancelled" || conv.job?.status === "completed"
-    );
-    if (oldConversations.length === 0) {
-      setActionMessage({ type: "error", text: "No old chats to clear." });
-      Alert.alert("No old chats to clear", "There are no completed or cancelled inactive chats to clear.");
-      return;
-    }
     confirmAction({
       title: "Clear old chats?",
-      message: "Only completed or cancelled inactive conversations will be hidden. Active chats will stay visible.",
+      message: "Only inactive conversations will be hidden. Active chats will stay visible.",
       confirmText: "Clear",
       onConfirm: async () => {
         try {
@@ -120,7 +112,7 @@ export default function MessagesScreen() {
           await loadConversations(true, false);
           if (cleared === 0) {
             setActionMessage({ type: "error", text: "No old chats to clear." });
-            Alert.alert("No old chats to clear", "There are no completed or cancelled inactive chats to clear.");
+            Alert.alert("No old chats to clear", "There are no inactive chats to clear.");
             return;
           }
           setActionMessage({ type: "success", text: `${cleared} old chat${cleared === 1 ? "" : "s"} cleared.` });
@@ -177,12 +169,12 @@ export default function MessagesScreen() {
         </View>
       ) : null}
 
-      {conversations.length === 0 ? (
+      {filterActiveConversations(conversations, currentUserId).length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.emptyText}>No conversations yet. Apply for a job or select a worker to start messaging.</Text>
+          <Text style={styles.emptyText}>No active conversations yet. Apply for a job or select a worker to start messaging.</Text>
         </View>
       ) : (
-        conversations.map((conv) => (
+        filterActiveConversations(conversations, currentUserId).map((conv) => (
           <ConversationCard key={conv.id} conversation={conv} currentUserId={currentUserId} />
         ))
       )}

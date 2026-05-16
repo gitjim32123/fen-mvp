@@ -142,6 +142,16 @@ function formatCancellationCutoff(startTime?: string, travelMinutes?: number) {
   return formatStartTime(cutoff.toISOString());
 }
 
+function normalizeId(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function sameId(left: unknown, right: unknown) {
+  const leftId = normalizeId(left);
+  const rightId = normalizeId(right);
+  return !!leftId && !!rightId && leftId === rightId;
+}
+
 export default function JobDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -196,6 +206,11 @@ export default function JobDetailScreen() {
 
   const markFeedbackForCurrentJob = useCallback(() => {
     setFeedbackJobId(jobId || null);
+    setApplyMessage(null);
+    setApplyError(null);
+    setActionMessage(null);
+    setApplicationsError(null);
+    setShowApplications(false);
   }, [jobId]);
 
   const loadJobState = useCallback(async (active = true, showSpinner = true, clearFeedback = false) => {
@@ -225,14 +240,16 @@ export default function JobDetailScreen() {
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!active) return;
-      setCurrentUserId(user?.id ?? null);
+      const loadedUserId = normalizeId(user?.id);
+      const loadedPosterId = normalizeId(data.poster_id);
+      setCurrentUserId(loadedUserId || null);
 
-      if (user?.id && data.poster_id === user.id) {
+      if (sameId(loadedUserId, loadedPosterId)) {
         const jobApplications = await getApplicationsForJob(jobId);
         if (!active) return;
         setApplications(jobApplications);
         setMyApplication(null);
-      } else if (user?.id) {
+      } else if (loadedUserId) {
         const application = await getMyApplicationForJob(jobId).catch(() => null);
         if (!active) return;
         setMyApplication(application);
@@ -242,7 +259,7 @@ export default function JobDetailScreen() {
         setApplications([]);
       }
 
-      if (user?.id && data.poster_id !== user.id) {
+      if (loadedUserId && !sameId(loadedUserId, loadedPosterId)) {
         const profile = await getProfile().catch(() => null);
         const profilePostcode = profile?.postcode?.trim();
         const jobPostcode = (data.postcode || "").split("→")[0]?.trim();
@@ -280,7 +297,7 @@ export default function JobDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      loadJobState(active, false);
+      loadJobState(active, false, true);
       return () => {
         active = false;
       };
@@ -290,7 +307,7 @@ export default function JobDetailScreen() {
   useEffect(() => {
     let active = true;
     const timer = setInterval(() => {
-      loadJobState(active, false);
+      loadJobState(active, false, true);
     }, 6000);
     return () => {
       active = false;
@@ -300,24 +317,32 @@ export default function JobDetailScreen() {
 
   const areaText = (job as any)?.postcode_district || job?.postcode || "Area not available";
   const activeApplications = applications.filter((application) => application.status === "applied");
-  const selectedApplication = applications.find((app) => app.worker_id === job?.accepted_worker_id);
+  const currentUserKey = normalizeId(currentUserId);
+  const posterId = normalizeId(job?.poster_id);
+  const acceptedWorkerId = normalizeId(job?.accepted_worker_id);
+  const isSignedIn = !!currentUserKey;
+  const isPoster = sameId(currentUserKey, posterId);
+  const isAcceptedWorker = sameId(currentUserKey, acceptedWorkerId);
+  const isSelectedWorker = isAcceptedWorker;
+  const hasSelectedWorker = !!acceptedWorkerId;
+  const selectedApplication = applications.find((app) => sameId(app.worker_id, acceptedWorkerId));
   const selectedWorkerName =
     selectedApplication?.worker?.display_name ||
-    (currentUserId === job?.accepted_worker_id ? "you" : "Selected helper");
-  const isSignedIn = !!currentUserId;
-  const isPoster = !!currentUserId && currentUserId === job?.poster_id;
-  const isAcceptedWorker = !!currentUserId && !!job?.accepted_worker_id && currentUserId === job.accepted_worker_id;
+    (sameId(currentUserKey, acceptedWorkerId) ? "you" : "Selected helper");
   const hasApplied = myApplication?.status === "applied";
-  const isSelectedWorker = isAcceptedWorker;
   const applicationWithdrawn = myApplication?.status === "withdrawn";
   const applicationsClosed = job?.status !== "open";
-  const hasSelectedWorker = !!job?.accepted_worker_id;
   const isCompletedJob = job?.status === "completed";
   const isCancelledJob = job?.status === "cancelled";
-  const canManageStartTime =
+  const canProposeStartTime =
     isPoster &&
-    !!job?.accepted_worker_id &&
-    (job?.status === "held" || job?.status === "confirm_pending");
+    hasSelectedWorker &&
+    job?.status === "held";
+  const canChangeStartTimeProposal =
+    isPoster &&
+    hasSelectedWorker &&
+    job?.status === "confirm_pending";
+  const canManageStartTime = canProposeStartTime || canChangeStartTimeProposal;
   const canConfirmStartTime =
     isAcceptedWorker &&
     job?.status === "confirm_pending" &&
@@ -332,6 +357,7 @@ export default function JobDetailScreen() {
         ? "This job has started."
         : getStatusHelp((job as any)?.status);
   const cancellationCutoff = formatCancellationCutoff(job?.preferred_start_at || job?.agreed_start_at, travelMinutes);
+  const startTimeActionLabel = canChangeStartTimeProposal ? "Change proposed time" : "Propose start time";
 
   async function handleApply() {
     markFeedbackForCurrentJob();
@@ -345,16 +371,16 @@ export default function JobDetailScreen() {
       return;
     }
 
-    try {
-      setApplying(true);
-      setApplyError(null);
-      setApplyMessage(null);
-      const application = await applyToJob(jobId, applicationMessage.trim() || undefined);
-      setMyApplication(application);
-      setApplicationMessage("");
-      setApplyMessage("Applied. The poster can now review your application.");
-      await loadJobState(true, false);
-      Alert.alert("Applied!", "The poster has been notified. They'll reach out if interested.");
+      try {
+        setApplying(true);
+        setApplyError(null);
+        setApplyMessage(null);
+        const application = await applyToJob(jobId, applicationMessage.trim() || undefined);
+        setMyApplication(application);
+        setApplicationMessage("");
+        await loadJobState(true, false, true);
+        setApplyMessage("Applied. The poster can now review your application.");
+        Alert.alert("Applied!", "The poster has been notified. They'll reach out if interested.");
     } catch (err: any) {
       const message = getApplyErrorMessage(err);
       setApplyError(message);
@@ -375,15 +401,15 @@ export default function JobDetailScreen() {
       setApplyError("No active application was found to withdraw.");
       return;
     }
-    try {
-      setWithdrawingApplication(true);
-      setApplyError(null);
-      const application = await withdrawApplication(jobId);
-      setMyApplication(application);
-      setApplyMessage("Application withdrawn.");
-      setActionMessage({ type: "success", text: "Application withdrawn." });
-      await loadJobState(true, false);
-    } catch (err: any) {
+      try {
+        setWithdrawingApplication(true);
+        setApplyError(null);
+        const application = await withdrawApplication(jobId);
+        setMyApplication(application);
+        await loadJobState(true, false, true);
+        setApplyMessage("Application withdrawn.");
+        setActionMessage({ type: "success", text: "Application withdrawn." });
+      } catch (err: any) {
       const message = err?.message || "Could not withdraw this application.";
       setApplyError(message);
       Alert.alert("Could not withdraw", message);
@@ -393,7 +419,7 @@ export default function JobDetailScreen() {
   }
 
   async function loadApplications() {
-    if (!jobId || !currentUserId || job?.poster_id !== currentUserId) {
+    if (!jobId || !isPoster) {
       setApplicationsError("Applications cannot be loaded for this account.");
       return;
     }
@@ -412,8 +438,8 @@ export default function JobDetailScreen() {
 
   async function handleAcceptWorker(workerId: string, workerName: string) {
     markFeedbackForCurrentJob();
-    if (!jobId || !currentUserId) {
-      setActionMessage({ type: "error", text: "Could not accept applicant because the job or user is missing." });
+    if (!jobId || !currentUserKey || !isPoster) {
+      setActionMessage({ type: "error", text: "Only the signed-in poster can accept applicants." });
       return;
     }
     confirmAction({
@@ -425,8 +451,8 @@ export default function JobDetailScreen() {
           setAccepting(true);
           setAcceptingWorkerId(workerId);
           await selectWorker(jobId, workerId);
-          const conversation = await createOrOpenConversation(jobId, currentUserId, workerId);
-          await loadJobState(true, false);
+          const conversation = await createOrOpenConversation(jobId, currentUserKey, workerId);
+          await loadJobState(true, false, true);
           setShowApplications(false);
           setActionMessage({ type: "success", text: "Worker selected — applications are closed." });
           Alert.alert("Worker accepted!", "You can now message each other to finalise the job.");
@@ -465,7 +491,7 @@ export default function JobDetailScreen() {
           const data = await cancelJob(jobId, "Cancelled by poster");
           setJob(data);
           setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-          await loadJobState(true, false);
+          await loadJobState(true, false, true);
           setActionMessage({ type: "success", text: "Job cancelled." });
           Alert.alert("Job cancelled", "This job is now cancelled. You can reopen it from this page if needed.");
         } catch (err: any) {
@@ -482,7 +508,7 @@ export default function JobDetailScreen() {
 
   function handleLeaveJob() {
     markFeedbackForCurrentJob();
-    if (!jobId || !currentUserId || job?.accepted_worker_id !== currentUserId) {
+    if (!jobId || !currentUserKey || !isSelectedWorker) {
       setActionMessage({ type: "error", text: "You are not the selected worker for this job." });
       return;
     }
@@ -495,12 +521,12 @@ export default function JobDetailScreen() {
       onConfirm: async () => {
         try {
           setCancelling(true);
-          const data = await leaveAcceptedJob(jobId, currentUserId);
+          const data = await leaveAcceptedJob(jobId, currentUserKey);
           setJob(data);
           const application = await getMyApplicationForJob(jobId).catch(() => null);
           setMyApplication(application);
           setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-          await loadJobState(true, false);
+          await loadJobState(true, false, true);
           setActionMessage({ type: "success", text: "You left the job and it has been reopened." });
           Alert.alert("Left job", "You have been removed and the job is open again.");
         } catch (err: any) {
@@ -542,8 +568,8 @@ export default function JobDetailScreen() {
     }
 
     try {
-      setSavingJob(true);
-      const data = await updateJobDetails(jobId, {
+          setSavingJob(true);
+          const data = await updateJobDetails(jobId, {
         title: editTitle,
         description: editDescription,
         budget_gbp: parsedBudget,
@@ -574,12 +600,12 @@ export default function JobDetailScreen() {
       cancelText: "Keep job",
       destructive: true,
       onConfirm: async () => {
-        try {
-          setSavingJob(true);
-          await removeJob(jobId);
-          setActionMessage({ type: "success", text: "Job removed." });
-          Alert.alert("Job removed", "This job is no longer visible.");
-          router.replace("/app/my-jobs");
+      try {
+        setSavingJob(true);
+        await removeJob(jobId);
+        setActionMessage({ type: "success", text: "Job removed." });
+        Alert.alert("Job removed", "This job is no longer visible.");
+        router.replace("/app/my-jobs");
         } catch (err: any) {
           const message = err?.message || "Something went wrong.";
           setActionMessage({ type: "error", text: message });
@@ -606,7 +632,7 @@ export default function JobDetailScreen() {
 
   function handleReopenJob() {
     markFeedbackForCurrentJob();
-    if (!jobId || currentUserId !== job?.poster_id) {
+    if (!jobId || !isPoster) {
       setActionMessage({ type: "error", text: "Only the poster can reopen this job." });
       return;
     }
@@ -623,7 +649,7 @@ export default function JobDetailScreen() {
         try {
           setCancelling(true);
           await reopenJob(jobId);
-          await loadJobState(true, false);
+          await loadJobState(true, false, true);
           setActionMessage({ type: "success", text: "Job reopened for applications." });
           Alert.alert("Job reopened", "This job is open for applications again.");
         } catch (err: any) {
@@ -647,7 +673,7 @@ export default function JobDetailScreen() {
     try {
       setUpdatingStartTime(true);
       await proposeJobStartTime(jobId, proposedStartTime);
-      await loadJobState(true, false);
+      await loadJobState(true, false, true);
       setActionMessage({ type: "success", text: "Start time proposed. Waiting for worker confirmation." });
       Alert.alert("Start time proposed", "The worker can now confirm the start time.");
     } catch (err: any) {
@@ -661,14 +687,14 @@ export default function JobDetailScreen() {
 
   async function handleConfirmStartTime() {
     markFeedbackForCurrentJob();
-    if (!jobId || !currentUserId || !canConfirmStartTime) {
+    if (!jobId || !currentUserKey || !canConfirmStartTime) {
       setActionMessage({ type: "error", text: "Start time cannot be confirmed from this account or job state." });
       return;
     }
     try {
       setUpdatingStartTime(true);
-      await confirmJobStartTime(jobId, currentUserId);
-      await loadJobState(true, false);
+      await confirmJobStartTime(jobId, currentUserKey);
+      await loadJobState(true, false, true);
       setActionMessage({ type: "success", text: "Start time confirmed. Job is now in progress." });
       Alert.alert("Start time confirmed", "This job is now marked as in progress.");
     } catch (err: any) {
@@ -687,13 +713,13 @@ export default function JobDetailScreen() {
       Alert.alert("Sign in required", "Sign in before opening messages.");
       return;
     }
-    if (!jobId || !job?.poster_id || !workerId) {
+    if (!jobId || !posterId || !workerId) {
       setActionMessage({ type: "error", text: "Could not open chat because the job or worker is missing." });
       return;
     }
     try {
       setOpeningConversation(true);
-      const conversation = await createOrOpenConversation(jobId, job.poster_id, workerId);
+      const conversation = await createOrOpenConversation(jobId, posterId, workerId);
       router.push(`/app/messages/${conversation.id}`);
     } catch (err: any) {
       const message = err?.message || "Something went wrong.";
@@ -706,8 +732,8 @@ export default function JobDetailScreen() {
 
   async function handleCompleteJob() {
     markFeedbackForCurrentJob();
-    if (!currentUserId || (!isPoster && !isSelectedWorker)) {
-      setActionMessage({ type: "error", text: "Sign in as the poster or selected helper to complete this job." });
+    if (!currentUserKey || !isPoster) {
+      setActionMessage({ type: "error", text: "Only the signed-in poster can complete this job." });
       return;
     }
     if (!jobId || !["in_progress"].includes(job?.status || "")) {
@@ -720,13 +746,13 @@ export default function JobDetailScreen() {
       confirmText: "Complete",
       cancelText: "Keep active",
       onConfirm: async () => {
-        try {
-          setCompletingJob(true);
-          const data = await completeJob(jobId);
-          setJob(data);
-          setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-          await loadJobState(true, false);
-          setActionMessage({ type: "success", text: "Job completed." });
+    try {
+      setCompletingJob(true);
+      const data = await completeJob(jobId);
+      setJob(data);
+      setStartTime(data.agreed_start_at || data.preferred_start_at || "");
+      await loadJobState(true, false, true);
+      setActionMessage({ type: "success", text: "Job completed." });
           Alert.alert("Job completed", "This job has moved to completed/cancelled history.");
         } catch (err: any) {
           const message = err?.message || "Could not complete this job.";
@@ -849,11 +875,11 @@ export default function JobDetailScreen() {
           <SignInRequired title="Sign in for job actions" text="You can read job details while logged out. Sign in to apply, message, report, or manage this job." />
         )}
 
-        {isPoster && job.accepted_worker_id && (
+        {isPoster && hasSelectedWorker && (
           <View style={styles.acceptedCard}>
             <Text style={styles.acceptedTitle}>Selected helper: {selectedWorkerName}</Text>
             <Text style={styles.acceptedText}>{lifecycleHelp}</Text>
-            <Pressable style={[styles.btn, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(job.accepted_worker_id)} disabled={openingConversation}>
+            <Pressable style={[styles.btn, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(acceptedWorkerId)} disabled={openingConversation}>
               {openingConversation ? (
                 <ActivityIndicator size="small" color="#140E1D" />
               ) : (
@@ -863,7 +889,7 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {(isPoster || isSelectedWorker) && job.accepted_worker_id && !isCancelledJob && !isCompletedJob && (
+        {(isPoster || isSelectedWorker) && hasSelectedWorker && !isCancelledJob && !isCompletedJob && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Start time</Text>
             <Text style={styles.bodyText}>
@@ -876,8 +902,14 @@ export default function JobDetailScreen() {
             {cancellationCutoff ? (
               <Text style={styles.cutoffText}>Cancel before: {cancellationCutoff}</Text>
             ) : null}
+            {isPoster && job.status === "confirm_pending" ? (
+              <Text style={styles.noticeText}>Waiting for the selected worker to confirm. You can change the proposed time if needed.</Text>
+            ) : null}
+            {isSelectedWorker && job.status === "confirm_pending" ? (
+              <Text style={styles.noticeText}>Confirm this time if it works for you. If not, message the poster to request another time.</Text>
+            ) : null}
 
-            {canManageStartTime && (
+            {isPoster && canManageStartTime && (
               <>
                 <View style={styles.dateChipRow}>
                   {DATE_CHIPS.map((chip) => (
@@ -915,13 +947,13 @@ export default function JobDetailScreen() {
                   {updatingStartTime ? (
                     <ActivityIndicator size="small" color="#E7D9FF" />
                   ) : (
-                    <Text style={styles.secondaryButtonText}>Propose start time</Text>
+                    <Text style={styles.secondaryButtonText}>{startTimeActionLabel}</Text>
                   )}
                 </Pressable>
               </>
             )}
 
-            {canConfirmStartTime && (
+            {isSelectedWorker && canConfirmStartTime && (
               <Pressable
                 style={[styles.btn, updatingStartTime && styles.btnDisabled]}
                 onPress={handleConfirmStartTime}
@@ -1011,7 +1043,7 @@ export default function JobDetailScreen() {
           <Text style={styles.inlineErrorText}>{applyError}</Text>
         )}
 
-        {isSignedIn && !isPoster && !isSelectedWorker && !hasApplied && !applicationWithdrawn && !applicationsClosed && !hasSelectedWorker && (
+        {isSignedIn && !isPoster && !isSelectedWorker && !hasApplied && !applicationsClosed && !hasSelectedWorker && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Apply</Text>
             <TextInput
@@ -1085,7 +1117,7 @@ export default function JobDetailScreen() {
         )}
       </ScrollView>
 
-      {showApplications && job.status === "open" && !job.accepted_worker_id && (
+      {isPoster && showApplications && job.status === "open" && !hasSelectedWorker && (
         <Modal
           transparent
           visible
@@ -1106,7 +1138,7 @@ export default function JobDetailScreen() {
                 <ScrollView style={styles.applicationsList}>
                   {activeApplications.map((application) => {
                     const workerName = application.worker?.display_name || "Applicant";
-                    const isSelected = application.status === "selected" || application.worker_id === job.accepted_worker_id;
+                    const isSelected = application.status === "selected" || sameId(application.worker_id, acceptedWorkerId);
                     const isAcceptingThisWorker = acceptingWorkerId === application.worker_id;
                     return (
                       <View key={application.id} style={styles.applicationCard}>

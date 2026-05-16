@@ -91,6 +91,10 @@ export function getConversationLifecycle(conversation: Conversation | null | und
   };
 }
 
+export function filterActiveConversations(conversations: Conversation[], currentUserId?: string | null) {
+  return conversations.filter((conversation) => getConversationLifecycle(conversation, currentUserId).isActive);
+}
+
 async function fillConversationDisplayNames<T extends Conversation & { poster?: { display_name?: string } | null; worker?: { display_name?: string } | null }>(rows: T[]): Promise<T[]> {
   const missingIds = rows.flatMap((conversation) => {
     const ids: string[] = [];
@@ -223,7 +227,19 @@ export async function archiveConversation(conversationId: string) {
 }
 
 export async function archiveInactiveConversations() {
-  const { data, error } = await supabase.rpc("archive_inactive_conversations");
-  if (error) throw error;
-  return Number(data ?? 0);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const conversations = await getConversations();
+  const inactive = conversations.filter((conversation) => getConversationLifecycle(conversation, user.id).isHistorical);
+  if (inactive.length === 0) return 0;
+
+  let cleared = 0;
+  for (const conversation of inactive) {
+    const archived = await archiveConversation(conversation.id);
+    if (archived?.id) {
+      cleared += 1;
+    }
+  }
+  return cleared;
 }
