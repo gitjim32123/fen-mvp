@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { getConversation, getMessages, sendMessage } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation, Message } from "../../../lib/types";
@@ -21,15 +21,14 @@ export default function ConversationScreen() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [requiresSignIn, setRequiresSignIn] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    async function load() {
+  const loadConversation = useCallback(async (active = true, showSpinner = true) => {
       if (!conversationId) {
         setErrorText("Conversation not found.");
         setLoading(false);
         return;
       }
       try {
+        if (showSpinner) setLoading(true);
         setErrorText(null);
         setRequiresSignIn(false);
         const { data: { user } } = await supabase.auth.getUser();
@@ -55,10 +54,32 @@ export default function ConversationScreen() {
       } finally {
         if (active) setLoading(false);
       }
-    }
-    load();
-    return () => { active = false; };
   }, [conversationId]);
+
+  useEffect(() => {
+    let active = true;
+    loadConversation(active);
+    return () => { active = false; };
+  }, [loadConversation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadConversation(active, false);
+      return () => { active = false; };
+    }, [loadConversation])
+  );
+
+  useEffect(() => {
+    let active = true;
+    const timer = setInterval(() => {
+      loadConversation(active, false);
+    }, 4000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [loadConversation]);
 
   async function handleSend() {
     if (!newMessage.trim()) {
@@ -75,6 +96,10 @@ export default function ConversationScreen() {
       const msg = await sendMessage(conversationId, "", newMessage.trim());
       setMessages((prev) => [...prev, msg as Message]);
       setNewMessage("");
+      await loadConversation(true, false);
+      if ((msg as any).activity_warning) {
+        setSendError(`Message sent, but recent activity could not refresh: ${(msg as any).activity_warning}`);
+      }
     } catch (err: any) {
       setSendError(err?.message || "Message could not be sent.");
       Alert.alert("Could not send", err?.message || "Something went wrong.");
@@ -102,7 +127,8 @@ export default function ConversationScreen() {
   const jobTitle = conversation?.job?.title || "Job conversation";
   const isCompleted = conversation?.job?.status === "completed";
   const isCancelled = conversation?.job?.status === "cancelled";
-  const isReadOnly = isCancelled || isCompleted;
+  const isArchived = !!conversation?.is_archived;
+  const isReadOnly = isCancelled || isCompleted || isArchived;
 
   function handleReportConversation() {
     if (!currentUserId) {
@@ -163,7 +189,9 @@ export default function ConversationScreen() {
           <Text style={styles.cancelledText}>
             {isCompleted
               ? "This job is completed. This conversation is kept for your records."
-              : "This job was cancelled. Any new arrangement requires a new agreement."}
+              : isArchived
+                ? "This conversation has been archived and is read-only."
+                : "This job was cancelled. Any new arrangement requires a new agreement."}
           </Text>
         </View>
       ) : (

@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { launchImageLibraryAsync } from "expo-image-picker";
 import { postJob } from "../../lib/jobs";
 import { supabase } from "../../lib/supabase";
 import { checkJobSafety, scoreBusinessAdRisk } from "../../lib/moderation";
 import { checkRepeatPosting } from "../../lib/spam";
-import { addStrike, getStrikeCount } from "../../lib/auth";
 import { estimateMiles, estimateTravelMinutes, geocodePostcode, roundToFive } from "../../lib/geocoding";
+import { confirmAction } from "../../lib/confirmAction";
 import { SignInRequired } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, type JobCategory } from "../../lib/categories";
 
@@ -37,16 +37,19 @@ function needsTravelPostcodes(cat: Category, title: string, description: string)
 }
 
 const SUGGESTIONS: Record<string, { description: string; budget: number; category: Category }> = {
-  "collect sofa": { description: "Help collecting or moving a sofa. Large item handling needed.", budget: 40, category: "Moving / lifting" },
-  "sofa pickup": { description: "Help picking up and moving a sofa. Large item handling needed.", budget: 40, category: "Moving / lifting" },
-  move: { description: "Help moving furniture or heavy items. Please be careful and reliable.", budget: 25, category: "Moving / lifting" },
-  sofa: { description: "Help moving a sofa. Need someone strong and careful with handling.", budget: 40, category: "Moving / lifting" },
+  "collect sofa": { description: "Help collecting or moving a sofa. Large item handling needed.", budget: 35, category: "Moving / lifting" },
+  "sofa pickup": { description: "Help picking up and moving a sofa. Large item handling needed.", budget: 35, category: "Moving / lifting" },
+  move: { description: "Help moving items. Please describe the size, stairs, and distance clearly.", budget: 25, category: "Moving / lifting" },
+  sofa: { description: "Help moving a sofa. Need someone strong and careful with handling.", budget: 35, category: "Moving / lifting" },
   fridge: { description: "Help moving a fridge or large appliance. Two people recommended.", budget: 40, category: "Moving / lifting" },
-  wardrobe: { description: "Help moving a wardrobe or bulky furniture item.", budget: 35, category: "Moving / lifting" },
+  wardrobe: { description: "Help moving a wardrobe or bulky furniture item.", budget: 30, category: "Moving / lifting" },
   bed: { description: "Help moving a bed or mattress. Disassembly may be needed.", budget: 30, category: "Moving / lifting" },
   piano: { description: "Help moving a piano. Needs care and at least two people.", budget: 60, category: "Moving / lifting" },
-  "moving help": { description: "Small moving help needed. Packing or lifting assistance for a few items.", budget: 30, category: "Moving / lifting" },
-  "small move": { description: "Help with a small move. Moving a few boxes or items to a new address.", budget: 25, category: "Moving / lifting" },
+  "moving help": { description: "Moving help needed. Packing or lifting assistance for a few items.", budget: 25, category: "Moving / lifting" },
+  "small move": { description: "Help with a small move. Moving a few boxes or items.", budget: 20, category: "Moving / lifting" },
+  "few boxes": { description: "Help moving a few boxes or smaller items.", budget: 20, category: "Moving / lifting" },
+  boxes: { description: "Help moving boxes or smaller items.", budget: 20, category: "Moving / lifting" },
+  "bulky furniture": { description: "Help moving bulky furniture. Please describe stairs, size, and access.", budget: 35, category: "Moving / lifting" },
   "man with van": { description: "Moving or lifting help requested. Keep this as a one-off help request, not a service advert.", budget: 35, category: "Moving / lifting" },
   "man in van": { description: "Moving or lifting help requested. Keep this as a one-off help request, not a service advert.", budget: 35, category: "Moving / lifting" },
   garden: { description: "Garden tidy-up needed. Mowing, weeding, and general clearing.", budget: 25, category: "Garden & Outdoor" },
@@ -70,6 +73,8 @@ const SUGGESTIONS: Record<string, { description: string; budget: number; categor
   clean: { description: "Light cleaning and tidying of indoor space.", budget: 20, category: "Cleaning" },
   cleaning: { description: "General cleaning of a home or room. Basic supplies provided.", budget: 25, category: "Cleaning" },
   "deep clean": { description: "Deep cleaning of a property. All equipment provided.", budget: 50, category: "Cleaning" },
+  "window clean": { description: "One-off help cleaning accessible windows. Avoid professional service advertising.", budget: 20, category: "Other" },
+  "window cleaner": { description: "One-off help cleaning accessible windows. Avoid professional service advertising.", budget: 20, category: "Other" },
   paint: { description: "Painting a room or small area. Bring your own brushes if possible.", budget: 45, category: "Decorating & Basic DIY" },
   decorating: { description: "Decorating help needed. Painting or wallpapering assistance.", budget: 45, category: "Decorating & Basic DIY" },
   diy: { description: "Basic DIY help needed for a small non-regulated household task.", budget: 35, category: "Decorating & Basic DIY" },
@@ -83,10 +88,15 @@ const SUGGESTIONS: Record<string, { description: string; budget: number; categor
   computer: { description: "Computer or laptop help. Setup, troubleshooting, or installation.", budget: 25, category: "Coding & Tech Help" },
   wifi: { description: "Wi-Fi or internet setup help needed. Router configuration and troubleshooting.", budget: 25, category: "Coding & Tech Help" },
   admin: { description: "Admin help needed for a small one-off task such as organising files or data entry.", budget: 30, category: "Business & Admin" },
-  "keep company": { description: "Companionship help needed for a short visit. Keep arrangements clear and safe.", budget: 20, category: "Companionship & Errands" },
-  companionship: { description: "Companionship or social support needed for a short local visit.", budget: 20, category: "Companionship & Errands" },
-  "sit with": { description: "Sit with someone for a short visit and provide friendly company.", budget: 20, category: "Companionship & Errands" },
-  "social support": { description: "Simple companionship or social support for a short time.", budget: 20, category: "Companionship & Errands" },
+  "keep someone company": { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  "keep company": { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  "someone company": { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  companionship: { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  "sit with": { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  "chat for an hour": { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  lonely: { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  visit: { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
+  "social support": { description: "Looking for someone friendly to keep company for around an hour. Details and expectations can be agreed in messages.", budget: 15, category: "Companionship & Errands" },
   handyman: { description: "Odd jobs and small repairs around the house. Basic tools helpful.", budget: 30, category: "Other" },
   "odd job": { description: "Odd jobs and small tasks around the home. Flexible with what needs doing.", budget: 25, category: "Other" },
   repair: { description: "Small repair job needed. Tools provided or welcome.", budget: 30, category: "Other" },
@@ -114,20 +124,32 @@ function detectCategory(title: string): { category: Category; description: strin
 function suggestBudget(category: Category, titleText: string, baseBudget: number, miles?: number) {
   const text = titleText.toLowerCase();
   let budget = baseBudget;
-  if (category === "Moving / lifting" && /\b(sofa|fridge|wardrobe|piano|large|heavy)\b/.test(text)) {
-    budget = Math.max(budget, 40);
+  if (category === "Moving / lifting") {
+    if (/\b(boxes|few boxes|small move)\b/.test(text)) budget = Math.max(20, Math.min(budget, 25));
+    if (/\b(sofa|wardrobe|bulky furniture|large item)\b/.test(text)) budget = Math.max(budget, 35);
+    if (/\b(fridge|heavy|very heavy)\b/.test(text)) budget = Math.max(budget, 40);
+    if (/\b(piano)\b/.test(text)) budget = Math.max(budget, 60);
   }
   if (category === "Delivery / collection" && /\b(parcel|small)\b/.test(text)) {
-    budget = Math.min(budget, 20);
+    budget = Math.min(Math.max(budget, 15), 25);
   }
   if (typeof miles === "number" && miles > 0) {
     const uplift =
-      category === "Moving / lifting" ? Math.min(25, miles * 1.5) :
-      category === "Delivery / collection" ? Math.min(15, miles) :
+      category === "Moving / lifting" ? Math.min(20, Math.max(0, miles - 3) * 1.25) :
+      category === "Delivery / collection" ? Math.min(15, Math.max(0, miles - 2)) :
       0;
     budget += uplift;
   }
   return roundToFive(budget);
+}
+
+function getValidPreferredStartAt(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return undefined;
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
 }
 
 export default function PostScreen() {
@@ -147,6 +169,8 @@ export default function PostScreen() {
   const [moderationWarning, setModerationWarning] = useState<string | null>(null);
   const [moderationBlock, setModerationBlock] = useState<string | null>(null);
   const [postError, setPostError] = useState<string | null>(null);
+  const [postSuccess, setPostSuccess] = useState<string | null>(null);
+  const [postedJobId, setPostedJobId] = useState<string | null>(null);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [categoryOverridden, setCategoryOverridden] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -155,6 +179,15 @@ export default function PostScreen() {
   const [travelEstimateStatus, setTravelEstimateStatus] = useState<string | null>(null);
 
   const showPostcodes = needsTravelPostcodes(detectedCategory, title, description);
+
+  useFocusEffect(
+    useCallback(() => {
+      setPostSuccess(null);
+      setPostError(null);
+      setPostedJobId(null);
+      setPosting(false);
+    }, [])
+  );
 
   useEffect(() => {
     let active = true;
@@ -347,9 +380,11 @@ export default function PostScreen() {
   }
 
   async function submitJob() {
+    if (posting || postedJobId) return;
     try {
       setPosting(true);
       setPostError(null);
+      setPostSuccess(null);
       const postcodeValue = showPostcodes
         ? `${fromPostcode.trim().toUpperCase()} → ${toPostcode.trim().toUpperCase()}`
         : locationPostcode.trim().toUpperCase();
@@ -362,6 +397,7 @@ export default function PostScreen() {
       console.log("Could not post job", message, err);
       setPostError(message);
       Alert.alert("Could not post", message);
+    } finally {
       setPosting(false);
     }
   }
@@ -377,15 +413,14 @@ export default function PostScreen() {
       category: detectedCategory,
       urgency,
       tools_supplied: toolsSupplied,
-      preferred_start_at: preferredTime.trim() || undefined,
+      preferred_start_at: getValidPreferredStartAt(preferredTime),
       lat: jobPoint?.latitude,
       lng: jobPoint?.longitude,
     });
-    Alert.alert("Job posted", "Your job is now live for nearby workers to see.", [
-      { text: "View job", onPress: () => router.replace(`/app/job/${job.id}`) },
-      { text: "My Jobs", onPress: () => router.replace("/app/my-jobs") },
-    ]);
-    setPosting(false);
+    setPostedJobId(job.id);
+    setPostSuccess("Job posted. Opening the job now...");
+    Alert.alert("Job posted", "Your job is now live for nearby workers to see.");
+    router.replace(`/app/job/${job.id}`);
   }
 
   async function handlePost() {
@@ -418,12 +453,6 @@ export default function PostScreen() {
         return;
       }
     }
-    const strikes = await getStrikeCount().catch(() => 0);
-    if (strikes >= 3) {
-      setPostError("Posting is temporarily restricted after repeated business advert attempts.");
-      Alert.alert("Posting restricted", "You've attempted to post business adverts multiple times. Posting is temporarily restricted.");
-      return;
-    }
     const safetyResult = checkJobSafety({ title, description });
     if (safetyResult.action === "block") {
       const message = safetyResult.reason || "This job is not allowed on FEN MVP.";
@@ -435,18 +464,13 @@ export default function PostScreen() {
       const warning = "FEN is for one-off local help, not professional service adverts or regulated trade work.";
       setPostError(`${warning} Please rewrite it as a one-off help request.`);
       Alert.alert(
-        "Check your post",
-        `${warning} Please rewrite it as a one-off help request.`,
-        [
-          { text: "Edit", style: "cancel" },
-          { text: "Post anyway", onPress: submitJob },
-        ]
+        "Rewrite needed",
+        `${warning} Please rewrite it as a one-off help request.`
       );
       return;
     }
     const modResult = scoreBusinessAdRisk({ title, description });
     if (modResult.action === "block") {
-      await addStrike().catch(() => {});
       setPostError("This looks like business advertising. FEN is for local one-off jobs, not commercial promotion.");
       Alert.alert(
         "Post not allowed",
@@ -455,15 +479,14 @@ export default function PostScreen() {
       return;
     }
     if (modResult.action === "warn") {
-      setPostError("Your post looks like a business advert. Please rewrite it as a one-off local job or help request.");
-      Alert.alert(
-        "Check your post",
-        "Your post looks like a business advert. Please rewrite it as a one-off local job or help request.",
-        [
-          { text: "Edit", style: "cancel" },
-          { text: "Post anyway", onPress: submitJob },
-        ]
-      );
+      setPostError("Your post may include service-advert wording. Please rewrite it as a one-off local job or help request.");
+      confirmAction({
+        title: "Check your post",
+        message: "Your post may include service-advert wording. If this is genuinely a one-off help request, you can continue. Otherwise, rewrite it first.",
+        confirmText: "Post anyway",
+        cancelText: "Cancel",
+        onConfirm: submitJob,
+      });
       return;
     }
     const spamResult = await checkRepeatPosting(title, description);
@@ -477,20 +500,19 @@ export default function PostScreen() {
     }
     if (spamResult.action === "warn") {
       setPostError("This looks very similar to one of your recent posts. Only repost if this is genuinely a new job.");
-      Alert.alert(
-        "Similar to recent posts",
-        "This looks very similar to one of your recent posts. Please only repost if this is genuinely a new job.",
-        [
-          { text: "Edit", style: "cancel" },
-          { text: "Post anyway", onPress: submitJob },
-        ]
-      );
+      confirmAction({
+        title: "Similar to recent posts",
+        message: "This looks very similar to one of your recent posts. Please only repost if this is genuinely a new job.",
+        confirmText: "Post anyway",
+        cancelText: "Edit",
+        onConfirm: submitJob,
+      });
       return;
     }
     await submitJob();
   }
 
-  const canPost = title.trim() && description.trim() && budget.trim() && !moderationBlock && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting;
+  const canPost = title.trim() && description.trim() && budget.trim() && !moderationBlock && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting && !postedJobId;
 
   if (!authChecked) {
     return (
@@ -646,10 +668,13 @@ export default function PostScreen() {
       {postError && (
         <Text style={styles.blockText}>{postError}</Text>
       )}
+      {postSuccess && (
+        <Text style={styles.successText}>{postSuccess}</Text>
+      )}
 
       <Text style={styles.photoHint}>Add photos to help others understand the job (avoid logos or adverts)</Text>
       {selectedImages.length > 0 ? (
-        <Text style={styles.photoNotice}>Photos are preview-only in this MVP and won’t be uploaded yet.</Text>
+        <Text style={styles.photoNotice}>Photos can help explain the job, but uploads are not available in this test version yet.</Text>
       ) : null}
 
       <View style={styles.notice}>
@@ -665,8 +690,8 @@ export default function PostScreen() {
         {posting ? (
           <ActivityIndicator size="small" color="#140E1D" />
         ) : (
-          <Text style={styles.primaryButtonText}>Post job</Text>
-        )}
+              <Text style={styles.primaryButtonText}>{postedJobId ? "Job posted" : "Post job"}</Text>
+            )}
       </Pressable>
     </ScrollView>
   );
@@ -902,6 +927,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 13,
     lineHeight: 18,
+  },
+  successText: {
+    color: "#C8F7D2",
+    backgroundColor: "#102619",
+    borderColor: "#2F7A45",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
   },
   policyNotice: {
     backgroundColor: "#1A1025",

@@ -15,8 +15,9 @@ const BLOCKED_JOB_TYPES: { pattern: RegExp; label: string }[] = [
 ];
 
 const BUSINESS_AD_TYPES: { pattern: RegExp; label: string }[] = [
-  { pattern: /\b(professional\s+(gardener|cleaner|service|handyman|builder|trader)|man\s+(and|in)\s+van(\s+service)?|plumber|gas engineer)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+  { pattern: /\b(window cleaner|professional\s+(gardener|cleaner|service|handyman|builder|trader)|man\s+(and|in)\s+van(\s+service)?|plumber|gas engineer|tradesman|qualified|certified|business service)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
   { pattern: /\b(my|our)\s+(company|business)\s+(offers?|provides?|advertis|promot)/i, label: "Business advertising is not allowed." },
+  { pattern: /\b(company|business)\s+offering\s+services?\b/i, label: "Business advertising is not allowed." },
   { pattern: /\b(advertis(e|ing)\s+my\s+business|business\s+promotion|service\s+packages?|book\s+my\s+service)\b/i, label: "Business advertising is not allowed." },
   { pattern: /\b(clients?|customers?)\b.*\b(packages?|book|service|offer|promotion)\b/i, label: "Repeat trade or service promotion is not allowed." },
   { pattern: /\b(i offer|we offer|services available|free quote|repeat work|regular customers?)\b/i, label: "Repeat trade or service promotion is not allowed." },
@@ -34,7 +35,7 @@ export function checkJobSafety(input: { title: string; description: string }): M
 
   for (const item of BUSINESS_AD_TYPES) {
     if (item.pattern.test(text)) {
-      return { score: 5, signals: [item.label], action: "warn", reason: item.label };
+      return { score: 8, signals: [item.label], action: "block", reason: item.label };
     }
   }
 
@@ -66,6 +67,7 @@ const MEDIUM_SIGNALS: { pattern: RegExp; label: string; points: number }[] = [
   { pattern: /\d+\s+years?\s+(of\s+)?experience/gi, label: '"Years experience" found', points: 2 },
   { pattern: /competitive\s+(rates?|price)/gi, label: '"Competitive rates" found', points: 2 },
   { pattern: /professional\s+(service|handyman|builder|cleaner|trader)/gi, label: '"Professional service" found', points: 2 },
+  { pattern: /\b(window cleaner|professional gardener|professional cleaner|man and van|man in van|tradesman|qualified|certified|business service)\b/gi, label: "Professional service wording found", points: 2 },
   { pattern: /reliable\s+(service|trader|worker)/gi, label: '"Reliable service" found', points: 2 },
   { pattern: /highly\s+rated/gi, label: '"Highly rated" found', points: 2 },
   { pattern: /check\s+my\s+(reviews?|profile|page)/gi, label: '"Check my reviews" found', points: 2 },

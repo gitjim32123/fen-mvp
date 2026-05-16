@@ -1,6 +1,6 @@
-import BrowseMap from "./BrowseMap";
+import BrowseMapBase from "./BrowseMapBase";
 import type { Job } from "../../lib/types";
 
 export default function NativeBrowseMap({ jobs, selectedId, onJobPress }: { jobs: Job[]; selectedId?: string; onJobPress?: (jobId: string) => void }) {
-  return <BrowseMap jobs={jobs.filter(Boolean)} selectedId={selectedId} onJobPress={onJobPress} />;
+  return <BrowseMapBase jobs={jobs.filter(Boolean)} selectedId={selectedId} onJobPress={onJobPress} />;
 }

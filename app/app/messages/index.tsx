@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
-import { archiveConversation, getConversations } from "../../../lib/messaging";
+import { router, useFocusEffect } from "expo-router";
+import { archiveInactiveConversations, getConversations } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation } from "../../../lib/types";
 import { SignInRequired } from "../../../components/ui/Premium";
+import { confirmAction } from "../../../lib/confirmAction";
 
 function ConversationCard({
   conversation,
@@ -51,11 +52,9 @@ export default function MessagesScreen() {
   const [clearingOld, setClearingOld] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    async function load() {
+  const loadConversations = useCallback(async (active = true, showSpinner = true) => {
       try {
-        setLoading(true);
+        if (showSpinner) setLoading(true);
         setErrorText(null);
         const { data: { user } } = await supabase.auth.getUser();
         if (!active) return;
@@ -74,10 +73,32 @@ export default function MessagesScreen() {
       } finally {
         if (active) setLoading(false);
       }
-    }
-    load();
-    return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    loadConversations(active);
+    return () => { active = false; };
+  }, [loadConversations]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadConversations(active, false);
+      return () => { active = false; };
+    }, [loadConversations])
+  );
+
+  useEffect(() => {
+    let active = true;
+    const timer = setInterval(() => {
+      loadConversations(active, false);
+    }, 10000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [loadConversations]);
 
   async function handleClearOldChats() {
     const oldConversations = conversations.filter(
@@ -88,32 +109,32 @@ export default function MessagesScreen() {
       Alert.alert("No old chats to clear", "There are no completed or cancelled inactive chats to clear.");
       return;
     }
-    Alert.alert(
-      "Clear old chats?",
-      "Only archived, completed, or cancelled conversations will be hidden. Active chats will stay visible.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          onPress: async () => {
-            try {
-              setClearingOld(true);
-              await Promise.all(oldConversations.map((conv) => archiveConversation(conv.id)));
-              setConversations((prev) => prev.filter((conv) => !(conv.is_archived || conv.job?.status === "cancelled" || conv.job?.status === "completed")));
-              setActionMessage({ type: "success", text: `${oldConversations.length} old chat${oldConversations.length === 1 ? "" : "s"} cleared.` });
-              Alert.alert("Old chats cleared", `${oldConversations.length} old chat${oldConversations.length === 1 ? "" : "s"} cleared.`);
-            } catch (err: any) {
-              console.log("Could not clear old chats", err);
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not clear chats", message);
-            } finally {
-              setClearingOld(false);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Clear old chats?",
+      message: "Only completed or cancelled inactive conversations will be hidden. Active chats will stay visible.",
+      confirmText: "Clear",
+      onConfirm: async () => {
+        try {
+          setClearingOld(true);
+          const cleared = await archiveInactiveConversations();
+          await loadConversations(true, false);
+          if (cleared === 0) {
+            setActionMessage({ type: "error", text: "No old chats to clear." });
+            Alert.alert("No old chats to clear", "There are no completed or cancelled inactive chats to clear.");
+            return;
+          }
+          setActionMessage({ type: "success", text: `${cleared} old chat${cleared === 1 ? "" : "s"} cleared.` });
+          Alert.alert("Old chats cleared", `${cleared} old chat${cleared === 1 ? "" : "s"} cleared.`);
+        } catch (err: any) {
+          console.log("Could not clear old chats", err);
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not clear chats", message);
+        } finally {
+          setClearingOld(false);
+        }
+      },
+    });
   }
 
   if (loading) {
@@ -139,6 +160,9 @@ export default function MessagesScreen() {
       <Text style={styles.subtitle}>Each conversation is tied to one job and stays text-only in MVP.</Text>
       <Pressable style={styles.clearButton} onPress={handleClearOldChats} disabled={clearingOld}>
         <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old inactive chats"}</Text>
+      </Pressable>
+      <Pressable style={styles.clearButton} onPress={() => loadConversations(true, false)} disabled={clearingOld}>
+        <Text style={styles.clearButtonText}>Refresh messages</Text>
       </Pressable>
 
       {errorText ? (

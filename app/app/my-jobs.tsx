@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { cancelJob, clearOldPostedJobs, completeJob, getMyPostedJobs, leaveAcceptedJob, removeJob } from "../../lib/jobs";
 import { getApplicationCountsForJobs, getMyApplications, withdrawApplication } from "../../lib/applications";
 import { createOrOpenConversation } from "../../lib/messaging";
@@ -8,6 +8,7 @@ import { supabase } from "../../lib/supabase";
 import type { Job, Application } from "../../lib/types";
 import StatusChip from "../../components/jobs/StatusChip";
 import { SignInRequired } from "../../components/ui/Premium";
+import { confirmAction } from "../../lib/confirmAction";
 
 function toStatusLabel(status: Job["status"] | Application["status"]) {
   switch (status) {
@@ -127,9 +128,9 @@ export default function MyJobsScreen() {
     return ["completed", "cancelled"].includes(job?.status) || ["withdrawn", "rejected"].includes(app.status);
   });
 
-  async function loadJobs(active = true) {
+  const loadJobs = useCallback(async (active = true, showSpinner = true) => {
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       setErrorText(null);
       const { data: { user } } = await supabase.auth.getUser();
       if (!active) return;
@@ -157,131 +158,131 @@ export default function MyJobsScreen() {
     } finally {
       if (active) setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     let active = true;
     loadJobs(active);
     return () => { active = false; };
-  }, []);
+  }, [loadJobs]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadJobs(active, false);
+      return () => { active = false; };
+    }, [loadJobs])
+  );
 
   function handleClearOldJobs() {
     const oldCount = postedJobs.filter((job) => job.status === "completed" || job.status === "cancelled").length;
     if (oldCount === 0) {
-      setActionMessage({ type: "error", text: "There are no completed or cancelled posted jobs to clear." });
-      Alert.alert("No old jobs", "There are no completed or cancelled posted jobs to clear.");
+      setActionMessage({ type: "error", text: "There are no old posted jobs to clear." });
+      Alert.alert("No old posted jobs", "There are no completed or cancelled posted jobs to clear.");
       return;
     }
-    Alert.alert(
-      "Clear old jobs?",
-      "Only completed and cancelled posted jobs will be hidden. Active jobs will stay visible.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          onPress: async () => {
-            try {
-              setClearingOld(true);
-              const cleared = await clearOldPostedJobs();
-              await loadJobs(true);
-              setActionMessage({ type: "success", text: `${cleared} old posted job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.` });
-              Alert.alert("Old jobs cleared", `${cleared} completed or cancelled job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.`);
-            } catch (err: any) {
-              console.log("Could not clear old jobs", err);
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not clear old jobs", message);
-            } finally {
-              setClearingOld(false);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Clear old posted jobs?",
+      message: "Only completed and cancelled posted jobs will be hidden. Active jobs will stay visible.",
+      confirmText: "Clear",
+      onConfirm: async () => {
+        try {
+          setClearingOld(true);
+          const cleared = await clearOldPostedJobs();
+          await loadJobs(true, false);
+          if (cleared === 0) {
+            setActionMessage({ type: "error", text: "No old posted jobs to clear." });
+            Alert.alert("No old posted jobs to clear", "There are no completed or cancelled posted jobs to clear.");
+            return;
+          }
+          setActionMessage({ type: "success", text: `${cleared} old posted job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.` });
+          Alert.alert("Old jobs cleared", `${cleared} completed or cancelled job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.`);
+        } catch (err: any) {
+          console.log("Could not clear old posted jobs", err);
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not clear old posted jobs", message);
+        } finally {
+          setClearingOld(false);
+        }
+      },
+    });
   }
 
   function handleCancelPostedJob(job: Job) {
-    Alert.alert(
-      "Cancel this job?",
-      "This marks the job cancelled and closes applications. You can reopen it from the job detail page.",
-      [
-        { text: "Keep job", style: "cancel" },
-        {
-          text: "Cancel job",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setBusyJobId(job.id);
-              await cancelJob(job.id, "Cancelled by poster");
-              await loadJobs(true);
-              setActionMessage({ type: "success", text: "Job cancelled." });
-              Alert.alert("Job cancelled", "This job is now cancelled.");
-            } catch (err: any) {
-              console.log("Could not cancel job from My Jobs", err);
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not cancel job", message);
-            } finally {
-              setBusyJobId(null);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Cancel this job?",
+      message: "This marks the job cancelled and closes applications. You can reopen it from the job detail page.",
+      confirmText: "Cancel job",
+      cancelText: "Keep job",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          setBusyJobId(job.id);
+          await cancelJob(job.id, "Cancelled by poster");
+          await loadJobs(true, false);
+          setActionMessage({ type: "success", text: "Job cancelled." });
+          Alert.alert("Job cancelled", "This job is now cancelled.");
+        } catch (err: any) {
+          console.log("Could not cancel job from My Jobs", err);
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not cancel job", message);
+        } finally {
+          setBusyJobId(null);
+        }
+      },
+    });
   }
 
   function handleRemovePostedJob(job: Job) {
-    Alert.alert(
-      "Remove this job?",
-      "Only open, completed, or cancelled jobs can be removed from your list. Active selected jobs should be cancelled first.",
-      [
-        { text: "Keep job", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setBusyJobId(job.id);
-              await removeJob(job.id);
-              await loadJobs(true);
-              setActionMessage({ type: "success", text: "Job removed from your list." });
-              Alert.alert("Job removed", "This job has been hidden from your list.");
-            } catch (err: any) {
-              console.log("Could not remove job from My Jobs", err);
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not remove job", message);
-            } finally {
-              setBusyJobId(null);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Remove this job?",
+      message: "Only open, completed, or cancelled jobs can be removed from your list. Active selected jobs should be cancelled first.",
+      confirmText: "Remove",
+      cancelText: "Keep job",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          setBusyJobId(job.id);
+          await removeJob(job.id);
+          await loadJobs(true, false);
+          setActionMessage({ type: "success", text: "Job removed from your list." });
+          Alert.alert("Job removed", "This job has been hidden from your list.");
+        } catch (err: any) {
+          console.log("Could not remove job from My Jobs", err);
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not remove job", message);
+        } finally {
+          setBusyJobId(null);
+        }
+      },
+    });
   }
 
   function handleWithdrawApplication(app: Application) {
-    Alert.alert("Withdraw application?", "This cancels your active application for this job.", [
-      { text: "Keep application", style: "cancel" },
-      {
-        text: "Withdraw",
-        onPress: async () => {
-          try {
-            setBusyJobId(app.job_id);
-            await withdrawApplication(app.job_id);
-            await loadJobs(true);
-            setActionMessage({ type: "success", text: "Application withdrawn." });
-            Alert.alert("Application withdrawn", "Your application has been cancelled.");
-          } catch (err: any) {
-            const message = err?.message || "Something went wrong.";
-            setActionMessage({ type: "error", text: message });
-            Alert.alert("Could not withdraw", message);
-          } finally {
-            setBusyJobId(null);
-          }
-        },
+    confirmAction({
+      title: "Withdraw application?",
+      message: "This cancels your active application for this job.",
+      confirmText: "Withdraw",
+      cancelText: "Keep application",
+      onConfirm: async () => {
+        try {
+          setBusyJobId(app.job_id);
+          await withdrawApplication(app.job_id);
+          await loadJobs(true, false);
+          setActionMessage({ type: "success", text: "Application withdrawn." });
+          Alert.alert("Application withdrawn", "Your application has been cancelled.");
+        } catch (err: any) {
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not withdraw", message);
+        } finally {
+          setBusyJobId(null);
+        }
       },
-    ]);
+    });
   }
 
   function handleLeaveSelectedJob(app: Application) {
@@ -289,28 +290,28 @@ export default function MyJobsScreen() {
       setActionMessage({ type: "error", text: "You need to be signed in to leave this job." });
       return;
     }
-    Alert.alert("Leave this job?", "Leaving before completion returns the job to open.", [
-      { text: "Stay", style: "cancel" },
-      {
-        text: "Leave",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setBusyJobId(app.job_id);
-            await leaveAcceptedJob(app.job_id, currentUserId);
-            await loadJobs(true);
-            setActionMessage({ type: "success", text: "You left the job and it has been reopened." });
-            Alert.alert("Left job", "The job has been reopened.");
-          } catch (err: any) {
-            const message = err?.message || "Something went wrong.";
-            setActionMessage({ type: "error", text: message });
-            Alert.alert("Could not leave", message);
-          } finally {
-            setBusyJobId(null);
-          }
-        },
+    confirmAction({
+      title: "Leave this job?",
+      message: "Leaving before completion returns the job to open.",
+      confirmText: "Leave",
+      cancelText: "Stay",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          setBusyJobId(app.job_id);
+          await leaveAcceptedJob(app.job_id, currentUserId);
+          await loadJobs(true, false);
+          setActionMessage({ type: "success", text: "You left the job and it has been reopened." });
+          Alert.alert("Left job", "The job has been reopened.");
+        } catch (err: any) {
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not leave", message);
+        } finally {
+          setBusyJobId(null);
+        }
       },
-    ]);
+    });
   }
 
   async function handleOpenChat(app: Application) {
@@ -351,27 +352,27 @@ export default function MyJobsScreen() {
   }
 
   function handleCompleteActiveJob(job: Job) {
-    Alert.alert("Complete this job?", "This marks the job completed and moves it out of active jobs.", [
-      { text: "Keep active", style: "cancel" },
-      {
-        text: "Complete",
-        onPress: async () => {
-          try {
-            setBusyJobId(job.id);
-            await completeJob(job.id);
-            await loadJobs(true);
-            setActionMessage({ type: "success", text: "Job completed." });
-            Alert.alert("Job completed", "This job has moved to completed/cancelled history.");
-          } catch (err: any) {
-            const message = err?.message || "Could not complete this job.";
-            setActionMessage({ type: "error", text: message });
-            Alert.alert("Could not complete job", message);
-          } finally {
-            setBusyJobId(null);
-          }
-        },
+    confirmAction({
+      title: "Complete this job?",
+      message: "This marks the job completed and moves it out of active jobs.",
+      confirmText: "Complete",
+      cancelText: "Keep active",
+      onConfirm: async () => {
+        try {
+          setBusyJobId(job.id);
+          await completeJob(job.id);
+          await loadJobs(true, false);
+          setActionMessage({ type: "success", text: "Job completed." });
+          Alert.alert("Job completed", "This job has moved to completed/cancelled history.");
+        } catch (err: any) {
+          const message = err?.message || "Could not complete this job.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not complete job", message);
+        } finally {
+          setBusyJobId(null);
+        }
       },
-    ]);
+    });
   }
 
   if (loading) {
@@ -396,7 +397,10 @@ export default function MyJobsScreen() {
       <Text style={styles.title}>My Jobs</Text>
       <Text style={styles.subtitle}>Track posted jobs and jobs you have applied for with clear status labels.</Text>
       <Pressable style={styles.clearButton} onPress={handleClearOldJobs} disabled={clearingOld}>
-        <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old completed/cancelled jobs"}</Text>
+        <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old posted jobs"}</Text>
+      </Pressable>
+      <Pressable style={styles.clearButton} onPress={() => loadJobs(true, false)} disabled={!!busyJobId || clearingOld}>
+        <Text style={styles.clearButtonText}>Refresh jobs</Text>
       </Pressable>
 
       {errorText ? (

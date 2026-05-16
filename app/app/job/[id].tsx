@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   cancelJob,
   completeJob,
@@ -36,6 +36,7 @@ import { supabase } from "../../../lib/supabase";
 import type { Application, Job } from "../../../lib/types";
 import { SignInRequired } from "../../../components/ui/Premium";
 import { normalizeCategory } from "../../../lib/categories";
+import { confirmAction } from "../../../lib/confirmAction";
 
 function toStatusLabel(status?: string) {
   switch (status) {
@@ -179,78 +180,123 @@ export default function JobDetailScreen() {
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [feedbackJobId, setFeedbackJobId] = useState<string | null>(null);
   const [travelEstimateText, setTravelEstimateText] = useState<string>(getTravelEstimateUnavailableText());
   const [travelMinutes, setTravelMinutes] = useState<number | undefined>(undefined);
   const [openingConversation, setOpeningConversation] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  const resetFeedback = useCallback(() => {
+    setApplyMessage(null);
+    setApplyError(null);
+    setActionMessage(null);
+    setFeedbackJobId(null);
+    setApplicationsError(null);
+    setShowApplications(false);
+  }, []);
 
-    async function load() {
-      if (!jobId) {
-        setErrorText("Job not found.");
-        setLoading(false);
-        return;
-      }
+  const markFeedbackForCurrentJob = useCallback(() => {
+    setFeedbackJobId(jobId || null);
+  }, [jobId]);
 
-      try {
-        setLoading(true);
-        setErrorText(null);
-
-        const data = await getJob(jobId);
-        if (!active) return;
-
-        setJob(data);
-        setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-        setEditTitle(data.title || "");
-        setEditDescription(data.description || "");
-        setEditBudget(String(data.budget_gbp ?? ""));
-        setEditCategory(data.category || "");
-        setEditPostcode(data.postcode || "");
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (active) setCurrentUserId(user?.id ?? null);
-
-        if (user?.id && data.poster_id === user.id) {
-          const jobApplications = await getApplicationsForJob(jobId);
-          if (active) setApplications(jobApplications);
-        } else if (user?.id) {
-          const application = await getMyApplicationForJob(jobId).catch(() => null);
-          if (active) setMyApplication(application);
-        }
-
-        if (user?.id && data.poster_id !== user.id) {
-          const profile = await getProfile().catch(() => null);
-          const profilePostcode = profile?.postcode?.trim();
-          const jobPostcode = (data.postcode || "").split("→")[0]?.trim();
-          if (jobPostcode && jobPostcode !== "N/A" && jobPostcode !== "AREA NOT PROVIDED") {
-            const [gpsPoint, profilePoint, toPoint] = await Promise.all([
-              getCurrentGpsPoint(),
-              profilePostcode ? geocodePostcode(profilePostcode) : Promise.resolve(null),
-              geocodePostcode(jobPostcode),
-            ]).catch(() => [null, null, null]);
-            const fromPoint = gpsPoint || profilePoint;
-            if (active && fromPoint && toPoint) {
-              const miles = estimateMiles(fromPoint, toPoint);
-              const minutes = estimateTravelMinutes(miles, profile?.transport_mode || "unspecified");
-              setTravelMinutes(minutes);
-              setTravelEstimateText(`Approx travel distance ${miles.toFixed(1)} miles, about ${minutes} min by ${profile?.transport_mode || "your transport mode"}.`);
-            }
-          }
-        }
-      } catch (error: any) {
-        if (!active) return;
-        setErrorText(error?.message || "Could not load this job.");
-      } finally {
-        if (active) setLoading(false);
-      }
+  const loadJobState = useCallback(async (active = true, showSpinner = true, clearFeedback = false) => {
+    if (!jobId) {
+      setErrorText("Job not found.");
+      setLoading(false);
+      return;
     }
 
-    load();
+    try {
+      if (showSpinner) setLoading(true);
+      if (clearFeedback) resetFeedback();
+      setErrorText(null);
+      setTravelEstimateText(getTravelEstimateUnavailableText());
+      setTravelMinutes(undefined);
+
+      const data = await getJob(jobId);
+      if (!active) return;
+
+      setJob(data);
+      setStartTime(data.agreed_start_at || data.preferred_start_at || "");
+      setEditTitle(data.title || "");
+      setEditDescription(data.description || "");
+      setEditBudget(String(data.budget_gbp ?? ""));
+      setEditCategory(data.category || "");
+      setEditPostcode(data.postcode || "");
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!active) return;
+      setCurrentUserId(user?.id ?? null);
+
+      if (user?.id && data.poster_id === user.id) {
+        const jobApplications = await getApplicationsForJob(jobId);
+        if (!active) return;
+        setApplications(jobApplications);
+        setMyApplication(null);
+      } else if (user?.id) {
+        const application = await getMyApplicationForJob(jobId).catch(() => null);
+        if (!active) return;
+        setMyApplication(application);
+        setApplications([]);
+      } else {
+        setMyApplication(null);
+        setApplications([]);
+      }
+
+      if (user?.id && data.poster_id !== user.id) {
+        const profile = await getProfile().catch(() => null);
+        const profilePostcode = profile?.postcode?.trim();
+        const jobPostcode = (data.postcode || "").split("→")[0]?.trim();
+        if (jobPostcode && jobPostcode !== "N/A" && jobPostcode !== "AREA NOT PROVIDED") {
+          const [gpsPoint, profilePoint, toPoint] = await Promise.all([
+            getCurrentGpsPoint(),
+            profilePostcode ? geocodePostcode(profilePostcode) : Promise.resolve(null),
+            geocodePostcode(jobPostcode),
+          ]).catch(() => [null, null, null]);
+          const fromPoint = gpsPoint || profilePoint;
+          if (active && fromPoint && toPoint) {
+            const miles = estimateMiles(fromPoint, toPoint);
+            const minutes = estimateTravelMinutes(miles, profile?.transport_mode || "unspecified");
+            setTravelMinutes(minutes);
+            setTravelEstimateText(`Approx travel distance ${miles.toFixed(1)} miles, about ${minutes} min by ${profile?.transport_mode || "your transport mode"}.`);
+          }
+        }
+      }
+    } catch (error: any) {
+      if (!active) return;
+      setErrorText(error?.message || "Could not load this job.");
+    } finally {
+      if (active) setLoading(false);
+    }
+  }, [jobId, resetFeedback]);
+
+  useEffect(() => {
+    let active = true;
+    loadJobState(active, true, true);
     return () => {
       active = false;
     };
-  }, [jobId]);
+  }, [loadJobState]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadJobState(active, false);
+      return () => {
+        active = false;
+      };
+    }, [loadJobState])
+  );
+
+  useEffect(() => {
+    let active = true;
+    const timer = setInterval(() => {
+      loadJobState(active, false);
+    }, 6000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [loadJobState]);
 
   const areaText = (job as any)?.postcode_district || job?.postcode || "Area not available";
   const activeApplications = applications.filter((application) => application.status === "applied");
@@ -269,12 +315,11 @@ export default function JobDetailScreen() {
   const canManageStartTime =
     isPoster &&
     !!job?.accepted_worker_id &&
-    job?.status !== "cancelled" &&
-    job?.status !== "completed";
+    (job?.status === "held" || job?.status === "confirm_pending");
   const canConfirmStartTime =
     isAcceptedWorker &&
     job?.status === "confirm_pending" &&
-    !!job?.agreed_start_at;
+    !!(job?.preferred_start_at || job?.agreed_start_at);
   const canEditJob = isPoster && job?.status === "open";
   const lifecycleHelp =
     job?.status === "confirm_pending"
@@ -284,9 +329,10 @@ export default function JobDetailScreen() {
       : job?.status === "in_progress"
         ? "This job has started."
         : getStatusHelp((job as any)?.status);
-  const cancellationCutoff = formatCancellationCutoff(job?.agreed_start_at, travelMinutes);
+  const cancellationCutoff = formatCancellationCutoff(job?.preferred_start_at || job?.agreed_start_at, travelMinutes);
 
   async function handleApply() {
+    markFeedbackForCurrentJob();
     if (!currentUserId) {
       setApplyError("Sign in before applying for this job.");
       Alert.alert("Sign in required", "Sign in before applying for this job.");
@@ -305,6 +351,7 @@ export default function JobDetailScreen() {
       setMyApplication(application);
       setApplicationMessage("");
       setApplyMessage("Applied. The poster can now review your application.");
+      await loadJobState(true, false);
       Alert.alert("Applied!", "The poster has been notified. They'll reach out if interested.");
     } catch (err: any) {
       const message = getApplyErrorMessage(err);
@@ -316,6 +363,7 @@ export default function JobDetailScreen() {
   }
 
   async function handleWithdrawApplication() {
+    markFeedbackForCurrentJob();
     if (!currentUserId) {
       setApplyError("Sign in before withdrawing this application.");
       Alert.alert("Sign in required", "Sign in before withdrawing this application.");
@@ -332,6 +380,7 @@ export default function JobDetailScreen() {
       setMyApplication(application);
       setApplyMessage("Application withdrawn.");
       setActionMessage({ type: "success", text: "Application withdrawn." });
+      await loadJobState(true, false);
     } catch (err: any) {
       const message = err?.message || "Could not withdraw this application.";
       setApplyError(message);
@@ -360,47 +409,40 @@ export default function JobDetailScreen() {
   }
 
   async function handleAcceptWorker(workerId: string, workerName: string) {
+    markFeedbackForCurrentJob();
     if (!jobId || !currentUserId) {
       setActionMessage({ type: "error", text: "Could not accept applicant because the job or user is missing." });
       return;
     }
-    Alert.alert(
-      "Accept this applicant?",
-      `You are choosing ${workerName || "this person"} for this job. This will let you message each other to arrange the details.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Accept",
-          onPress: async () => {
-            try {
-              setAccepting(true);
-              setAcceptingWorkerId(workerId);
-              await selectWorker(jobId, workerId);
-              const conversation = await createOrOpenConversation(jobId, currentUserId, workerId);
-              const data = await getJob(jobId);
-              setJob(data);
-              setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-              await loadApplications();
-              setShowApplications(false);
-              setActionMessage({ type: "success", text: "Worker selected — applications are closed." });
-              Alert.alert("Worker accepted!", "You can now message each other to finalise the job.", [
-                { text: "Open messages", onPress: () => router.push(`/app/messages/${conversation.id}`) },
-              ]);
-            } catch (err: any) {
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not accept", message);
-            } finally {
-              setAccepting(false);
-              setAcceptingWorkerId(null);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Accept this applicant?",
+      message: `You are choosing ${workerName || "this person"} for this job. This will let you message each other to arrange the details.`,
+      confirmText: "Accept",
+      onConfirm: async () => {
+        try {
+          setAccepting(true);
+          setAcceptingWorkerId(workerId);
+          await selectWorker(jobId, workerId);
+          const conversation = await createOrOpenConversation(jobId, currentUserId, workerId);
+          await loadJobState(true, false);
+          setShowApplications(false);
+          setActionMessage({ type: "success", text: "Worker selected — applications are closed." });
+          Alert.alert("Worker accepted!", "You can now message each other to finalise the job.");
+          router.push(`/app/messages/${conversation.id}`);
+        } catch (err: any) {
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not accept", message);
+        } finally {
+          setAccepting(false);
+          setAcceptingWorkerId(null);
+        }
+      },
+    });
   }
 
   function handleCancelJob() {
+    markFeedbackForCurrentJob();
     if (!currentUserId || !isPoster) {
       setActionMessage({ type: "error", text: "Only the signed-in poster can cancel this job." });
       return;
@@ -409,71 +451,66 @@ export default function JobDetailScreen() {
       setActionMessage({ type: "error", text: "This job cannot be cancelled from its current state." });
       return;
     }
-    Alert.alert(
-      "Cancel this job?",
-      "This will close the job for new applicants. If you've already accepted someone, please message them first.",
-      [
-        { text: "Keep job", style: "cancel" },
-        {
-          text: "Cancel job",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setCancelling(true);
-              const data = await cancelJob(jobId, "Cancelled by poster");
-              setJob(data);
-              setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-              setActionMessage({ type: "success", text: "Job cancelled." });
-              Alert.alert("Job cancelled", "This job is now cancelled. You can reopen it from this page if needed.");
-            } catch (err: any) {
-              console.log("Could not cancel job", err);
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not cancel", message);
-            } finally {
-              setCancelling(false);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Cancel this job?",
+      message: "This will close the job for new applicants. If you've already accepted someone, please message them first.",
+      confirmText: "Cancel job",
+      cancelText: "Keep job",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          setCancelling(true);
+          const data = await cancelJob(jobId, "Cancelled by poster");
+          setJob(data);
+          setStartTime(data.agreed_start_at || data.preferred_start_at || "");
+          await loadJobState(true, false);
+          setActionMessage({ type: "success", text: "Job cancelled." });
+          Alert.alert("Job cancelled", "This job is now cancelled. You can reopen it from this page if needed.");
+        } catch (err: any) {
+          console.log("Could not cancel job", err);
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not cancel", message);
+        } finally {
+          setCancelling(false);
+        }
+      },
+    });
   }
 
   function handleLeaveJob() {
+    markFeedbackForCurrentJob();
     if (!jobId || !currentUserId || job?.accepted_worker_id !== currentUserId) {
       setActionMessage({ type: "error", text: "You are not the selected worker for this job." });
       return;
     }
-    Alert.alert(
-      "Leave this job?",
-      "This will remove you from the job. The poster will be notified.",
-      [
-        { text: "Stay", style: "cancel" },
-        {
-          text: "Leave",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setCancelling(true);
-              const data = await leaveAcceptedJob(jobId, currentUserId);
-              setJob(data);
-              const application = await getMyApplicationForJob(jobId).catch(() => null);
-              setMyApplication(application);
-              setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-              setActionMessage({ type: "success", text: "You left the job and it has been reopened." });
-              Alert.alert("Left job", "You have been removed and the job is open again.");
-            } catch (err: any) {
-              console.log("Could not leave job", err);
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not leave", message);
-            } finally {
-              setCancelling(false);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Leave this job?",
+      message: "This will remove you from the job. The poster will be notified.",
+      confirmText: "Leave",
+      cancelText: "Stay",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          setCancelling(true);
+          const data = await leaveAcceptedJob(jobId, currentUserId);
+          setJob(data);
+          const application = await getMyApplicationForJob(jobId).catch(() => null);
+          setMyApplication(application);
+          setStartTime(data.agreed_start_at || data.preferred_start_at || "");
+          await loadJobState(true, false);
+          setActionMessage({ type: "success", text: "You left the job and it has been reopened." });
+          Alert.alert("Left job", "You have been removed and the job is open again.");
+        } catch (err: any) {
+          console.log("Could not leave job", err);
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not leave", message);
+        } finally {
+          setCancelling(false);
+        }
+      },
+    });
   }
 
   function openEditJob() {
@@ -487,6 +524,7 @@ export default function JobDetailScreen() {
   }
 
   async function handleSaveJobDetails() {
+    markFeedbackForCurrentJob();
     if (!jobId || !canEditJob) {
       setActionMessage({ type: "error", text: "This job cannot be edited from its current state." });
       return;
@@ -511,6 +549,7 @@ export default function JobDetailScreen() {
         postcode: editPostcode,
       });
       setJob(data);
+      await loadJobState(true, false);
       setShowEditJob(false);
       Alert.alert("Job updated", "Your job details have been saved.");
     } catch (err: any) {
@@ -521,40 +560,37 @@ export default function JobDetailScreen() {
   }
 
   function handleRemoveJob() {
+    markFeedbackForCurrentJob();
     if (!jobId || !canEditJob) {
       setActionMessage({ type: "error", text: "This job cannot be removed from its current state." });
       return;
     }
-    Alert.alert(
-      "Remove this job?",
-      "This hides the job from your list and closes it to applicants.",
-      [
-        { text: "Keep job", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setSavingJob(true);
-              await removeJob(jobId);
-              setActionMessage({ type: "success", text: "Job removed." });
-              Alert.alert("Job removed", "This job is no longer visible.", [
-                { text: "OK", onPress: () => router.replace("/app/my-jobs") },
-              ]);
-            } catch (err: any) {
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not remove job", message);
-            } finally {
-              setSavingJob(false);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Remove this job?",
+      message: "This hides the job from your list and closes it to applicants.",
+      confirmText: "Remove",
+      cancelText: "Keep job",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          setSavingJob(true);
+          await removeJob(jobId);
+          setActionMessage({ type: "success", text: "Job removed." });
+          Alert.alert("Job removed", "This job is no longer visible.");
+          router.replace("/app/my-jobs");
+        } catch (err: any) {
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not remove job", message);
+        } finally {
+          setSavingJob(false);
+        }
+      },
+    });
   }
 
   function handleReport() {
+    markFeedbackForCurrentJob();
     if (!currentUserId) {
       setActionMessage({ type: "error", text: "Sign in before reporting this job." });
       Alert.alert("Sign in required", "Sign in before reporting this job.");
@@ -567,46 +603,40 @@ export default function JobDetailScreen() {
   }
 
   function handleReopenJob() {
+    markFeedbackForCurrentJob();
     if (!jobId || currentUserId !== job?.poster_id) {
       setActionMessage({ type: "error", text: "Only the poster can reopen this job." });
       return;
     }
-    const isHeldReopen = job?.status === "held";
-    if (job?.status !== "cancelled" && !isHeldReopen) {
+    if (job?.status !== "cancelled") {
       setActionMessage({ type: "error", text: "This job cannot be reopened from its current state." });
       return;
     }
-    Alert.alert(
-      "Reopen this job?",
-      "This will make the job visible to new applicants again and clear any accepted worker. Previous application rows may still need a Phase 2 database reset before the same worker can reapply.",
-      [
-        { text: isHeldReopen ? "Keep selected" : "Keep cancelled", style: "cancel" },
-        {
-          text: "Reopen",
-          onPress: async () => {
-            try {
-              setCancelling(true);
-              await reopenJob(jobId);
-              const data = await getJob(jobId);
-              setJob(data);
-              setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-              await loadApplications();
-              setActionMessage({ type: "success", text: "Job reopened for applications." });
-              Alert.alert("Job reopened", "This job is open for applications again.");
-            } catch (err: any) {
-              const message = err?.message || "Something went wrong.";
-              setActionMessage({ type: "error", text: message });
-              Alert.alert("Could not reopen", message);
-            } finally {
-              setCancelling(false);
-            }
-          },
-        },
-      ]
-    );
+    confirmAction({
+      title: "Reopen this job?",
+      message: "This will make the job visible to new applicants again and clear any accepted worker. Previous application rows may still need a database reset before the same worker can reapply.",
+      confirmText: "Reopen",
+      cancelText: "Keep cancelled",
+      onConfirm: async () => {
+        try {
+          setCancelling(true);
+          await reopenJob(jobId);
+          await loadJobState(true, false);
+          setActionMessage({ type: "success", text: "Job reopened for applications." });
+          Alert.alert("Job reopened", "This job is open for applications again.");
+        } catch (err: any) {
+          const message = err?.message || "Something went wrong.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not reopen", message);
+        } finally {
+          setCancelling(false);
+        }
+      },
+    });
   }
 
   async function handleProposeStartTime() {
+    markFeedbackForCurrentJob();
     if (!jobId || !canManageStartTime) {
       setActionMessage({ type: "error", text: "Start time cannot be proposed from this account or job state." });
       return;
@@ -615,9 +645,7 @@ export default function JobDetailScreen() {
     try {
       setUpdatingStartTime(true);
       await proposeJobStartTime(jobId, proposedStartTime);
-      const data = await getJob(jobId);
-      setJob(data);
-      setStartTime(data.agreed_start_at || "");
+      await loadJobState(true, false);
       setActionMessage({ type: "success", text: "Start time proposed. Waiting for worker confirmation." });
       Alert.alert("Start time proposed", "The worker can now confirm the start time.");
     } catch (err: any) {
@@ -630,6 +658,7 @@ export default function JobDetailScreen() {
   }
 
   async function handleConfirmStartTime() {
+    markFeedbackForCurrentJob();
     if (!jobId || !currentUserId || !canConfirmStartTime) {
       setActionMessage({ type: "error", text: "Start time cannot be confirmed from this account or job state." });
       return;
@@ -637,9 +666,7 @@ export default function JobDetailScreen() {
     try {
       setUpdatingStartTime(true);
       await confirmJobStartTime(jobId, currentUserId);
-      const data = await getJob(jobId);
-      setJob(data);
-      setStartTime(data.agreed_start_at || "");
+      await loadJobState(true, false);
       setActionMessage({ type: "success", text: "Start time confirmed. Job is now in progress." });
       Alert.alert("Start time confirmed", "This job is now marked as in progress.");
     } catch (err: any) {
@@ -652,6 +679,7 @@ export default function JobDetailScreen() {
   }
 
   async function handleOpenConversation(workerId?: string) {
+    markFeedbackForCurrentJob();
     if (!currentUserId) {
       setActionMessage({ type: "error", text: "Sign in before opening messages." });
       Alert.alert("Sign in required", "Sign in before opening messages.");
@@ -675,6 +703,7 @@ export default function JobDetailScreen() {
   }
 
   async function handleCompleteJob() {
+    markFeedbackForCurrentJob();
     if (!currentUserId || (!isPoster && !isSelectedWorker)) {
       setActionMessage({ type: "error", text: "Sign in as the poster or selected helper to complete this job." });
       return;
@@ -683,28 +712,29 @@ export default function JobDetailScreen() {
       setActionMessage({ type: "error", text: "This job can only be completed once it is in progress." });
       return;
     }
-    Alert.alert("Complete this job?", "This marks the job completed and moves it out of active jobs.", [
-      { text: "Keep active", style: "cancel" },
-      {
-        text: "Complete",
-        onPress: async () => {
-          try {
-            setCompletingJob(true);
-            const data = await completeJob(jobId);
-            setJob(data);
-            setStartTime(data.agreed_start_at || data.preferred_start_at || "");
-            setActionMessage({ type: "success", text: "Job completed." });
-            Alert.alert("Job completed", "This job has moved to completed/cancelled history.");
-          } catch (err: any) {
-            const message = err?.message || "Could not complete this job.";
-            setActionMessage({ type: "error", text: message });
-            Alert.alert("Could not complete job", message);
-          } finally {
-            setCompletingJob(false);
-          }
-        },
+    confirmAction({
+      title: "Complete this job?",
+      message: "This marks the job completed and moves it out of active jobs.",
+      confirmText: "Complete",
+      cancelText: "Keep active",
+      onConfirm: async () => {
+        try {
+          setCompletingJob(true);
+          const data = await completeJob(jobId);
+          setJob(data);
+          setStartTime(data.agreed_start_at || data.preferred_start_at || "");
+          await loadJobState(true, false);
+          setActionMessage({ type: "success", text: "Job completed." });
+          Alert.alert("Job completed", "This job has moved to completed/cancelled history.");
+        } catch (err: any) {
+          const message = err?.message || "Could not complete this job.";
+          setActionMessage({ type: "error", text: message });
+          Alert.alert("Could not complete job", message);
+        } finally {
+          setCompletingJob(false);
+        }
       },
-    ]);
+    });
   }
 
   if (loading) {
@@ -805,7 +835,7 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {actionMessage && (
+        {actionMessage && feedbackJobId === jobId && (
           <View style={actionMessage.type === "success" ? styles.successBanner : styles.errorBanner}>
             <Text style={actionMessage.type === "success" ? styles.successBannerText : styles.errorBannerText}>
               {actionMessage.text}
@@ -836,7 +866,7 @@ export default function JobDetailScreen() {
             <Text style={styles.sectionTitle}>Start time</Text>
             <Text style={styles.bodyText}>
               {job.status === "confirm_pending"
-                ? `Pending confirmation: ${formatStartTime(job.agreed_start_at)}`
+                ? `Pending confirmation: ${formatStartTime(job.preferred_start_at || job.agreed_start_at)}`
                 : job.status === "in_progress"
                   ? `Confirmed: ${formatStartTime(job.agreed_start_at)}`
                   : `Current plan: ${formatStartTime(job.agreed_start_at || job.preferred_start_at)}`}
@@ -951,7 +981,7 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {!isPoster && !isSelectedWorker && hasApplied && (
+        {!isPoster && !isSelectedWorker && hasApplied && job.status === "open" && !hasSelectedWorker && (
           <View style={styles.acceptedCard}>
             <Text style={styles.acceptedTitle}>Application sent</Text>
             <Text style={styles.acceptedText}>The poster can review your application from their job page.</Text>
@@ -972,14 +1002,14 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {!isPoster && !isSelectedWorker && applyMessage && (
+        {!isPoster && !isSelectedWorker && applyMessage && feedbackJobId === jobId && job.status === "open" && !hasSelectedWorker && (
           <Text style={styles.successText}>{applyMessage}</Text>
         )}
-        {!isPoster && !isSelectedWorker && applyError && (
+        {!isPoster && !isSelectedWorker && applyError && feedbackJobId === jobId && (
           <Text style={styles.inlineErrorText}>{applyError}</Text>
         )}
 
-        {isSignedIn && !isPoster && !isSelectedWorker && !hasApplied && !applicationWithdrawn && !applicationsClosed && (
+        {isSignedIn && !isPoster && !isSelectedWorker && !hasApplied && !applicationWithdrawn && !applicationsClosed && !hasSelectedWorker && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Apply</Text>
             <TextInput
@@ -1008,7 +1038,7 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {!isPoster && !isSelectedWorker && !hasApplied && applicationsClosed && (
+        {!isPoster && !isSelectedWorker && !applicationWithdrawn && (applicationsClosed || hasSelectedWorker) && (
           <View style={styles.noticeCard}>
             <Text style={styles.noticeTitle}>Applications closed</Text>
             <Text style={styles.noticeText}>
@@ -1020,12 +1050,6 @@ export default function JobDetailScreen() {
         {isPoster && (job as any)?.status === "cancelled" && (
           <Pressable style={styles.btn} onPress={handleReopenJob} disabled={cancelling}>
             <Text style={styles.btnText}>{cancelling ? "Processing..." : "Reopen job"}</Text>
-          </Pressable>
-        )}
-
-        {isPoster && (job as any)?.status === "held" && (
-          <Pressable style={styles.secondaryButton} onPress={handleReopenJob} disabled={cancelling}>
-            <Text style={styles.secondaryButtonText}>{cancelling ? "Processing..." : "Reopen job"}</Text>
           </Pressable>
         )}
 

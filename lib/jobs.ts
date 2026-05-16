@@ -131,6 +131,7 @@ export async function cancelJob(id: string, reason: string) {
       status: "cancelled",
       cancel_reason: reason,
       accepted_worker_id: null,
+      preferred_start_at: null,
       agreed_start_at: null,
     })
     .eq("id", id)
@@ -168,10 +169,10 @@ export async function reopenJob(id: string) {
 
   const { data, error } = await supabase
     .from("jobs")
-    .update({ status: "open", accepted_worker_id: null, agreed_start_at: null, cancel_reason: null })
+    .update({ status: "open", accepted_worker_id: null, preferred_start_at: null, agreed_start_at: null, cancel_reason: null })
     .eq("id", id)
     .eq("poster_id", user.id)
-    .in("status", ["cancelled", "held"])
+    .eq("status", "cancelled")
     .select("*")
     .maybeSingle();
 
@@ -194,10 +195,7 @@ export async function leaveAcceptedJob(id: string, workerId: string) {
   if (!currentJob || currentJob.accepted_worker_id !== workerId) {
     throw new Error("You are not the selected worker for this job.");
   }
-  if (currentJob.status === "in_progress") {
-    throw new Error("Leaving an in-progress job needs a Phase 2 database/RLS helper. Message the poster before continuing.");
-  }
-  if (!["held", "confirm_pending"].includes(currentJob.status)) {
+  if (!["held", "confirm_pending", "in_progress"].includes(currentJob.status)) {
     throw new Error("This job cannot be left from its current state.");
   }
 
@@ -224,11 +222,11 @@ export async function proposeJobStartTime(id: string, startTime: string) {
 
   const { data, error } = await supabase
     .from("jobs")
-    .update({ status: "confirm_pending", agreed_start_at: startTime })
+    .update({ status: "confirm_pending", preferred_start_at: startTime, agreed_start_at: null })
     .eq("id", id)
     .eq("poster_id", user.id)
     .in("status", ["held", "confirm_pending"])
-    .select("id,status,agreed_start_at")
+    .select("id,status,preferred_start_at,agreed_start_at")
     .maybeSingle();
 
   if (error) throw error;
@@ -250,7 +248,14 @@ export async function confirmJobStartTime(id: string, workerId: string) {
   if (!job || job.accepted_worker_id !== workerId || job.status !== "confirm_pending") {
     throw new Error("This start time cannot be confirmed from the current job state.");
   }
-  throw new Error("Confirming start time as the worker needs a Phase 2 database/RLS helper.");
+
+  const { data, error: rpcError } = await supabase.rpc("confirm_job_start_time", { p_job_id: id });
+  if (rpcError) throw rpcError;
+  const confirmed = Array.isArray(data) ? data[0] : data;
+  if (!confirmed || confirmed.status !== "in_progress") {
+    throw new Error("Start time confirmation was not applied. This may be a database/RLS issue.");
+  }
+  return confirmed;
 }
 
 export async function completeJob(id: string) {
@@ -315,6 +320,5 @@ export async function clearOldPostedJobs() {
 
   if (error) throw error;
   const count = data?.length ?? 0;
-  if (count === 0) throw new Error("No old jobs were cleared. This may be a permissions/RLS issue.");
   return count;
 }

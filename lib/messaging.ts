@@ -1,5 +1,29 @@
 import { supabase } from "./supabase";
 import type { Conversation, Message } from "./types";
+import { getProfileDisplayNames } from "./profiles";
+
+async function fillConversationDisplayNames<T extends Conversation & { poster?: { display_name?: string } | null; worker?: { display_name?: string } | null }>(rows: T[]): Promise<T[]> {
+  const missingIds = rows.flatMap((conversation) => {
+    const ids: string[] = [];
+    if (!conversation.poster?.display_name) ids.push(conversation.poster_id);
+    if (!conversation.worker?.display_name) ids.push(conversation.worker_id);
+    return ids;
+  });
+  if (missingIds.length === 0) return rows;
+
+  const displayNames = await getProfileDisplayNames(missingIds);
+  return rows.map((conversation) => ({
+    ...conversation,
+    poster: {
+      ...(conversation.poster ?? {}),
+      display_name: conversation.poster?.display_name || displayNames[conversation.poster_id] || "Poster",
+    },
+    worker: {
+      ...(conversation.worker ?? {}),
+      display_name: conversation.worker?.display_name || displayNames[conversation.worker_id] || "Worker",
+    },
+  }));
+}
 
 export async function getConversations(): Promise<Conversation[]> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -13,7 +37,7 @@ export async function getConversations(): Promise<Conversation[]> {
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
-  return data ?? [];
+  return fillConversationDisplayNames((data ?? []) as any);
 }
 
 export async function getMessages(conversationId: string): Promise<Message[]> {
@@ -35,7 +59,8 @@ export async function getConversation(conversationId: string): Promise<Conversat
     .single();
 
   if (error) throw error;
-  return data;
+  const [filled] = await fillConversationDisplayNames([data as any]);
+  return filled;
 }
 
 export async function sendMessage(conversationId: string, jobId: string, body: string) {
@@ -59,11 +84,14 @@ export async function sendMessage(conversationId: string, jobId: string, body: s
     .single();
 
   if (error) throw error;
-  await supabase
+  const { error: activityError } = await supabase
     .from("conversations")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", conversationId)
     .or(`poster_id.eq.${user.id},worker_id.eq.${user.id}`);
+  if (activityError) {
+    return { ...data, activity_warning: activityError.message };
+  }
   return data;
 }
 
@@ -106,4 +134,10 @@ export async function archiveConversation(conversationId: string) {
   if (error) throw error;
   if (!data) throw new Error("No archiveable conversation was found for your account.");
   return data;
+}
+
+export async function archiveInactiveConversations() {
+  const { data, error } = await supabase.rpc("archive_inactive_conversations");
+  if (error) throw error;
+  return Number(data ?? 0);
 }

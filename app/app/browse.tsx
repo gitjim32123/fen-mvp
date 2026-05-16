@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator, Pressable } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { getJobsNearby } from "../../lib/jobs";
 import type { Job } from "../../lib/types";
 import { getProfile } from "../../lib/auth";
@@ -37,7 +37,8 @@ function areaFromJob(job: Job): string {
 }
 
 function normalizeFilterValue(value?: string | null): string {
-  return normalizeCategory(value || "").trim().toLowerCase();
+  if (!value?.trim()) return "";
+  return normalizeCategory(value).trim().toLowerCase();
 }
 
 function distanceFromJob(job: Job): string {
@@ -58,11 +59,9 @@ export default function BrowseScreen() {
   const [distanceFilterMiles, setDistanceFilterMiles] = useState<number | null>(null);
   const [travelByJobId, setTravelByJobId] = useState<Record<string, { distance: string; time: string; miles: number }>>({});
 
-  useEffect(() => {
-    let active = true;
-    async function load() {
+  const loadJobs = useCallback(async (active = true, showSpinner = true) => {
       try {
-        setLoading(true);
+        if (showSpinner) setLoading(true);
         setErrorText(null);
         const data = await getJobsNearby();
         if (!active) return;
@@ -97,10 +96,32 @@ export default function BrowseScreen() {
       } finally {
         if (active) setLoading(false);
       }
-    }
-    load();
-    return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    loadJobs(active);
+    return () => { active = false; };
+  }, [loadJobs]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadJobs(active, false);
+      return () => { active = false; };
+    }, [loadJobs])
+  );
+
+  useEffect(() => {
+    let active = true;
+    const timer = setInterval(() => {
+      loadJobs(active, false);
+    }, 15000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [loadJobs]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -122,7 +143,14 @@ export default function BrowseScreen() {
             jobCategory.includes(q))
         );
       }
-    );
+    ).sort((a, b) => {
+      const aMiles = travelByJobId[a.id]?.miles;
+      const bMiles = travelByJobId[b.id]?.miles;
+      if (typeof aMiles === "number" && typeof bMiles === "number") return aMiles - bMiles;
+      if (typeof aMiles === "number") return -1;
+      if (typeof bMiles === "number") return 1;
+      return 0;
+    });
   }, [jobs, search, urgencyFilter, categoryFilter, distanceFilterMiles, travelByJobId]);
 
   return (
@@ -130,7 +158,7 @@ export default function BrowseScreen() {
       <PageHeader title="Browse nearby jobs" subtitle="Quick local jobs with area-first privacy and simple details." />
 
       <View style={styles.metricsRow}>
-        <InfoMetric label="Open jobs" value={String(jobs.length)} />
+        <InfoMetric label="Open jobs" value={String(jobs.filter((job) => job.status === "open").length)} />
         <InfoMetric label="Visible" value={String(filtered.length)} />
       </View>
 

@@ -104,9 +104,17 @@ export default function SignUpScreen() {
           onPress={() => setUnderstandsPlatform((v) => !v)}
           disabled={loading}
         >
-          <Text style={styles.confirmText}>
-            {understandsPlatform ? "Confirmed: " : ""}I understand FEN is a connection platform, not an employer or payment processor.
-          </Text>
+          <View style={[styles.checkbox, understandsPlatform && styles.checkboxActive]}>
+            {understandsPlatform ? <Text style={styles.checkboxMark}>✓</Text> : null}
+          </View>
+          <View style={styles.confirmCopy}>
+            <Text style={styles.confirmText}>
+              I understand FEN is a connection platform, not an employer or payment processor.
+            </Text>
+            {!understandsPlatform ? (
+              <Text style={styles.confirmHint}>Tick this to activate Create account.</Text>
+            ) : null}
+          </View>
         </Pressable>
 
         <View style={styles.legalRow}>
@@ -170,12 +178,15 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   subtitle: {
+    alignSelf: "stretch",
     color: colors.muted,
     fontSize: 16,
     lineHeight: 23,
     marginBottom: 6,
+    textAlign: "center",
   },
   input: {
+    alignSelf: "stretch",
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
@@ -199,6 +210,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     alignSelf: "stretch",
+    textAlign: "center",
     color: colors.text,
     fontSize: 14,
     fontWeight: "800",
@@ -232,6 +244,9 @@ const styles = StyleSheet.create({
   },
   confirmBox: {
     alignSelf: "stretch",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
@@ -240,11 +255,43 @@ const styles = StyleSheet.create({
   },
   confirmBoxActive: {
     borderColor: colors.accent,
+    backgroundColor: "#20172E",
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.muted,
+    backgroundColor: "#0E0A14",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
+  },
+  checkboxMark: {
+    color: "#140E1D",
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 18,
+  },
+  confirmCopy: {
+    flex: 1,
+    gap: 4,
   },
   confirmText: {
     color: colors.muted,
     fontSize: 13,
     lineHeight: 19,
+    fontWeight: "700",
+  },
+  confirmHint: {
+    color: "#FFB84D",
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: "700",
   },
   legalRow: {
@@ -282,6 +329,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   primaryButton: {
+    alignSelf: "stretch",
     backgroundColor: colors.accent,
     borderRadius: 16,
     paddingVertical: 16,

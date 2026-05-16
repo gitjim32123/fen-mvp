@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { Application } from "./types";
+import { getProfileDisplayNames } from "./profiles";
 
 export async function applyToJob(jobId: string, message?: string) {
   const { data: { user } } = await supabase.auth.getUser();
@@ -21,15 +22,14 @@ export async function applyToJob(jobId: string, message?: string) {
     }
     throw new Error("You've already applied for this job.");
   }
+  if (existing?.status === "withdrawn") {
+    throw new Error("This previous application cannot be reopened yet. Try another open job for now.");
+  }
 
   const canApply = await supabase.rpc("can_apply_to_job", { p_job_id: jobId });
   if (canApply.error) throw canApply.error;
   if (!canApply.data) {
     throw new Error("This job is no longer available for applications, or your application limit/profile status prevents applying.");
-  }
-
-  if (existing?.status === "withdrawn") {
-    throw new Error("This previous application cannot be reopened until the Phase 2 database helper is approved. Try another open job for now.");
   }
 
   const write = supabase
@@ -92,7 +92,20 @@ export async function getApplicationsForJob(jobId: string): Promise<Application[
     .neq("status", "withdrawn");
 
   if (error) throw error;
-  return data ?? [];
+  const rows = data ?? [];
+  const missingNames = rows
+    .filter((row: any) => !row.worker?.display_name)
+    .map((row: any) => row.worker_id);
+  if (missingNames.length === 0) return rows;
+
+  const displayNames = await getProfileDisplayNames(missingNames);
+  return rows.map((row: any) => ({
+    ...row,
+    worker: {
+      ...(row.worker ?? {}),
+      display_name: row.worker?.display_name || displayNames[row.worker_id] || "Applicant",
+    },
+  }));
 }
 
 export async function selectWorker(jobId: string, workerId: string) {
