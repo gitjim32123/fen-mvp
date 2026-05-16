@@ -175,12 +175,6 @@ export default function MyJobsScreen() {
   );
 
   function handleClearOldJobs() {
-    const oldCount = postedJobs.filter((job) => job.status === "completed" || job.status === "cancelled").length;
-    if (oldCount === 0) {
-      setActionMessage({ type: "error", text: "There are no old posted jobs to clear." });
-      Alert.alert("No old posted jobs", "There are no completed or cancelled posted jobs to clear.");
-      return;
-    }
     confirmAction({
       title: "Clear old posted jobs?",
       message: "Only completed and cancelled posted jobs will be hidden. Active jobs will stay visible.",
@@ -192,11 +186,12 @@ export default function MyJobsScreen() {
           await loadJobs(true, false);
           if (cleared === 0) {
             setActionMessage({ type: "error", text: "No old posted jobs to clear." });
-            Alert.alert("No old posted jobs to clear", "There are no completed or cancelled posted jobs to clear.");
+            Alert.alert("No old posted jobs to clear", "No old posted jobs to clear.");
             return;
           }
-          setActionMessage({ type: "success", text: `${cleared} old posted job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.` });
-          Alert.alert("Old jobs cleared", `${cleared} completed or cancelled job${cleared === 1 ? "" : "s"} hidden. Active jobs were not changed.`);
+          const message = cleared === 1 ? "1 old posted job cleared" : `${cleared} old posted jobs cleared`;
+          setActionMessage({ type: "success", text: message });
+          Alert.alert("Old posted jobs cleared", message);
         } catch (err: any) {
           console.log("Could not clear old posted jobs", err);
           const message = err?.message || "Something went wrong.";

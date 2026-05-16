@@ -310,15 +310,8 @@ export async function clearOldPostedJobs() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
-  const { data, error } = await supabase
-    .from("jobs")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("poster_id", user.id)
-    .is("deleted_at", null)
-    .in("status", ["completed", "cancelled"])
-    .select("id");
+  const { data, error } = await supabase.rpc("archive_old_posted_jobs");
 
   if (error) throw error;
-  const count = data?.length ?? 0;
-  return count;
+  return Number(data ?? 0);
 }
