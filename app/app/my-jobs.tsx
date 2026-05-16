@@ -26,6 +26,38 @@ function toStatusLabel(status: Job["status"] | Application["status"]) {
   }
 }
 
+function formatStartTime(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString([], {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getSelectedJobDetails(job: any) {
+  if (!job) return ["Selected job details unavailable."];
+  if (job.status === "confirm_pending") {
+    return [
+      `Start time proposed: ${formatStartTime(job.preferred_start_at || job.agreed_start_at) || "waiting for details"}.`,
+      "Confirm from the job detail page when it works for you.",
+    ];
+  }
+  if (job.status === "in_progress") {
+    return [`Confirmed start: ${formatStartTime(job.agreed_start_at || job.preferred_start_at) || "agreed with poster"}.`];
+  }
+  if (job.status === "held") {
+    return ["You have been selected. Open chat to agree the details and wait for the poster to propose a start time."];
+  }
+  if (job.status === "completed" || job.status === "cancelled") {
+    return ["Historical job. Messages are kept read-only for your records."];
+  }
+  return ["Open the job for the latest status."];
+}
+
 function JobRow({
   title,
   budget,
@@ -41,6 +73,8 @@ function JobRow({
   onLeave,
   onOpenChat,
   onComplete,
+  detailLines = [],
+  historical = false,
 }: {
   title: string;
   budget: string;
@@ -56,6 +90,8 @@ function JobRow({
   onLeave?: () => void;
   onOpenChat?: () => void;
   onComplete?: () => void;
+  detailLines?: string[];
+  historical?: boolean;
 }) {
   const canCancel = isPosted && ["open", "held", "confirm_pending", "in_progress"].includes(rawStatus || "");
   const canRemove = isPosted && ["open", "cancelled", "completed"].includes(rawStatus || "");
@@ -67,7 +103,16 @@ function JobRow({
       </View>
       <StatusChip label={status as any} />
       {isPosted ? <Text style={styles.applicantText}>{applicants} applicant{applicants === 1 ? "" : "s"}</Text> : null}
-      <Text style={styles.statusHelp}>{status === "Open" ? "Open jobs can be edited or cancelled before a helper is selected." : "Open the job for next safe action."}</Text>
+      <Text style={styles.statusHelp}>
+        {historical
+          ? "Historical record. Open the job for details."
+          : status === "Open"
+            ? "Open jobs can be edited or cancelled before a helper is selected."
+            : "Open the job for next safe action."}
+      </Text>
+      {detailLines.map((line) => (
+        <Text key={line} style={styles.detailLine}>{line}</Text>
+      ))}
       <Pressable style={styles.actionButton} onPress={() => router.push(`/app/job/${jobId}`)}>
         <Text style={styles.actionButtonText}>{isPosted ? "Manage job" : "View details"}</Text>
       </Pressable>
@@ -117,7 +162,10 @@ export default function MyJobsScreen() {
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const activePostedJobs = postedJobs.filter((job) => !["completed", "cancelled"].includes(job.status));
-  const appliedActiveJobs = appliedJobs.filter((app) => app.status === "applied" && !["completed", "cancelled"].includes((app as any).job?.status));
+  const appliedActiveJobs = appliedJobs.filter((app) => {
+    const job = (app as any).job;
+    return app.status === "applied" && job?.status === "open" && !job?.accepted_worker_id;
+  });
   const selectedActiveJobs = appliedJobs.filter((app) => {
     const job = (app as any).job;
     return job?.accepted_worker_id === currentUserId && !["completed", "cancelled"].includes(job?.status);
@@ -125,7 +173,7 @@ export default function MyJobsScreen() {
   const oldPostedJobs = postedJobs.filter((job) => ["completed", "cancelled"].includes(job.status));
   const oldAppliedJobs = appliedJobs.filter((app) => {
     const job = (app as any).job;
-    return ["completed", "cancelled"].includes(job?.status) || ["withdrawn", "rejected"].includes(app.status);
+    return ["completed", "cancelled"].includes(job?.status) || ["withdrawn", "rejected"].includes(app.status) || (app.status === "applied" && job?.status && job.status !== "open");
   });
   const pendingApplicantCount = activePostedJobs
     .filter((job) => job.status === "open")
@@ -426,19 +474,28 @@ export default function MyJobsScreen() {
         <View style={styles.attentionBox}>
           <Text style={styles.attentionTitle}>Needs attention</Text>
           {pendingApplicantCount > 0 ? (
-            <Text style={styles.attentionText}>
-              {pendingApplicantCount} applicant{pendingApplicantCount === 1 ? "" : "s"} waiting on your open posted jobs.
-            </Text>
+            <View style={styles.attentionRow}>
+              <Text style={styles.attentionLabel}>Applicants</Text>
+              <Text style={styles.attentionText}>
+                {pendingApplicantCount} waiting on your open posted jobs.
+              </Text>
+            </View>
           ) : null}
           {selectedForWorkCount > 0 ? (
-            <Text style={styles.attentionText}>
-              You have been selected for {selectedForWorkCount} job{selectedForWorkCount === 1 ? "" : "s"}.
-            </Text>
+            <View style={styles.attentionRow}>
+              <Text style={styles.attentionLabel}>Selected</Text>
+              <Text style={styles.attentionText}>
+                You have been selected for {selectedForWorkCount} job{selectedForWorkCount === 1 ? "" : "s"}.
+              </Text>
+            </View>
           ) : null}
           {startConfirmCount > 0 ? (
-            <Text style={styles.attentionText}>
-              {startConfirmCount} start time confirmation{startConfirmCount === 1 ? "" : "s"} needed.
-            </Text>
+            <View style={styles.attentionRow}>
+              <Text style={styles.attentionLabel}>Confirm time</Text>
+              <Text style={styles.attentionText}>
+                {startConfirmCount} start time confirmation{startConfirmCount === 1 ? "" : "s"} needed.
+              </Text>
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -507,6 +564,7 @@ export default function MyJobsScreen() {
                 jobId={app.job_id}
                 isPosted={false}
                 busy={busyJobId === app.job_id}
+                detailLines={getSelectedJobDetails(job)}
                 onOpenChat={() => handleOpenChat(app)}
                 onLeave={job?.status !== "completed" && job?.status !== "cancelled" ? () => handleLeaveSelectedJob(app) : undefined}
               />
@@ -515,10 +573,10 @@ export default function MyJobsScreen() {
         )}
       </View>
 
-      <Text style={styles.sectionTitle}>Completed / cancelled</Text>
+      <Text style={styles.sectionTitle}>Completed / cancelled / inactive</Text>
       <View style={styles.group}>
         {oldPostedJobs.length === 0 && oldAppliedJobs.length === 0 ? (
-          <Text style={styles.emptyText}>No completed or cancelled jobs.</Text>
+          <Text style={styles.emptyText}>No completed, cancelled, or inactive jobs.</Text>
         ) : (
           <>
             {oldPostedJobs.map((job) => (
@@ -532,6 +590,7 @@ export default function MyJobsScreen() {
                 applicants={applicationCounts[job.id] || 0}
                 rawStatus={job.status}
                 busy={busyJobId === job.id}
+                historical
                 onRemove={() => handleRemovePostedJob(job)}
               />
             ))}
@@ -546,6 +605,8 @@ export default function MyJobsScreen() {
                   jobId={app.job_id}
                   isPosted={false}
                   busy={busyJobId === app.job_id}
+                  detailLines={getSelectedJobDetails(job)}
+                  historical
                 />
               );
             })}
@@ -617,6 +678,11 @@ const styles = StyleSheet.create({
   },
   statusHelp: {
     color: "#A590C9",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  detailLine: {
+    color: "#CBB8F1",
     fontSize: 13,
     lineHeight: 18,
   },
@@ -721,6 +787,22 @@ const styles = StyleSheet.create({
     color: "#E7D9FF",
     fontSize: 16,
     fontWeight: "800",
+  },
+  attentionRow: {
+    gap: 4,
+  },
+  attentionLabel: {
+    alignSelf: "flex-start",
+    backgroundColor: "#2A1E3D",
+    borderColor: "#6E46A3",
+    borderWidth: 1,
+    borderRadius: 999,
+    color: "#E7D9FF",
+    fontSize: 12,
+    fontWeight: "800",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   attentionText: {
     color: "#CBB8F1",

@@ -312,6 +312,8 @@ export default function JobDetailScreen() {
   const applicationWithdrawn = myApplication?.status === "withdrawn";
   const applicationsClosed = job?.status !== "open";
   const hasSelectedWorker = !!job?.accepted_worker_id;
+  const isCompletedJob = job?.status === "completed";
+  const isCancelledJob = job?.status === "cancelled";
   const canManageStartTime =
     isPoster &&
     !!job?.accepted_worker_id &&
@@ -447,7 +449,7 @@ export default function JobDetailScreen() {
       setActionMessage({ type: "error", text: "Only the signed-in poster can cancel this job." });
       return;
     }
-    if (!jobId || job?.status === "cancelled") {
+    if (!jobId || isCancelledJob || isCompletedJob) {
       setActionMessage({ type: "error", text: "This job cannot be cancelled from its current state." });
       return;
     }
@@ -861,7 +863,7 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {(isPoster || isSelectedWorker) && job.accepted_worker_id && (job as any)?.status !== "cancelled" && (
+        {(isPoster || isSelectedWorker) && job.accepted_worker_id && !isCancelledJob && !isCompletedJob && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Start time</Text>
             <Text style={styles.bodyText}>

@@ -66,4 +66,10 @@ export type Conversation = {
   poster_id: string;
   worker_id: string;
   is_archived: boolean;
+  updated_at?: string;
+  job?: {
+    title?: string;
+    status?: JobStatus;
+    accepted_worker_id?: string | null;
+  };
 };

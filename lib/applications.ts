@@ -180,7 +180,7 @@ export async function getMyApplications(): Promise<Application[]> {
 
   const { data, error } = await supabase
     .from("applications")
-    .select("*, job:jobs(id,title,budget_gbp,status,urgency,postcode,postcode_district,poster_id,accepted_worker_id,agreed_start_at)")
+    .select("*, job:jobs(id,title,budget_gbp,status,urgency,postcode,postcode_district,poster_id,accepted_worker_id,preferred_start_at,agreed_start_at)")
     .eq("worker_id", user.id)
     .order("created_at", { ascending: false });
 

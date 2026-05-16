@@ -2,6 +2,95 @@ import { supabase } from "./supabase";
 import type { Conversation, Message } from "./types";
 import { getProfileDisplayNames } from "./profiles";
 
+const ACTIVE_CHAT_STATUSES = new Set(["held", "confirm_pending", "in_progress"]);
+
+export type ConversationLifecycle = {
+  isParticipant: boolean;
+  isActive: boolean;
+  isHistorical: boolean;
+  reason: string;
+  label: string;
+};
+
+export function getConversationLifecycle(conversation: Conversation | null | undefined, currentUserId?: string | null): ConversationLifecycle {
+  if (!conversation) {
+    return {
+      isParticipant: false,
+      isActive: false,
+      isHistorical: true,
+      reason: "Conversation not found.",
+      label: "Unavailable",
+    };
+  }
+
+  const status = conversation.job?.status;
+  const acceptedWorkerId = conversation.job?.accepted_worker_id;
+  const isParticipant = !!currentUserId && (conversation.poster_id === currentUserId || conversation.worker_id === currentUserId);
+
+  if (!isParticipant) {
+    return {
+      isParticipant,
+      isActive: false,
+      isHistorical: true,
+      reason: "This conversation is only available to its job poster and selected helper.",
+      label: "Private",
+    };
+  }
+  if (conversation.is_archived) {
+    return {
+      isParticipant,
+      isActive: false,
+      isHistorical: true,
+      reason: "This conversation has been archived and is read-only.",
+      label: "Archived",
+    };
+  }
+  if (status === "completed") {
+    return {
+      isParticipant,
+      isActive: false,
+      isHistorical: true,
+      reason: "This job is completed. This conversation is kept for your records.",
+      label: "Completed - read only",
+    };
+  }
+  if (status === "cancelled") {
+    return {
+      isParticipant,
+      isActive: false,
+      isHistorical: true,
+      reason: "This job was cancelled. Any new arrangement requires a new agreement.",
+      label: "Cancelled - read only",
+    };
+  }
+  if (!status || !ACTIVE_CHAT_STATUSES.has(status)) {
+    return {
+      isParticipant,
+      isActive: false,
+      isHistorical: true,
+      reason: "This conversation is historical because the job is not currently assigned.",
+      label: "Historical - read only",
+    };
+  }
+  if (!acceptedWorkerId || acceptedWorkerId !== conversation.worker_id) {
+    return {
+      isParticipant,
+      isActive: false,
+      isHistorical: true,
+      reason: "This conversation is historical because this helper is no longer selected for the job.",
+      label: "Historical - read only",
+    };
+  }
+
+  return {
+    isParticipant,
+    isActive: true,
+    isHistorical: false,
+    reason: "Conversation active.",
+    label: "Active",
+  };
+}
+
 async function fillConversationDisplayNames<T extends Conversation & { poster?: { display_name?: string } | null; worker?: { display_name?: string } | null }>(rows: T[]): Promise<T[]> {
   const missingIds = rows.flatMap((conversation) => {
     const ids: string[] = [];
@@ -31,7 +120,7 @@ export async function getConversations(): Promise<Conversation[]> {
 
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, job:jobs(title,status), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
+    .select("*, job:jobs(title,status,accepted_worker_id), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
     .or(`poster_id.eq.${user.id},worker_id.eq.${user.id}`)
     .eq("is_archived", false)
     .order("updated_at", { ascending: false });
@@ -54,7 +143,7 @@ export async function getMessages(conversationId: string): Promise<Message[]> {
 export async function getConversation(conversationId: string): Promise<Conversation> {
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, job:jobs(title,status), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
+    .select("*, job:jobs(title,status,accepted_worker_id), poster:profiles!poster_id(display_name), worker:profiles!worker_id(display_name)")
     .eq("id", conversationId)
     .single();
 
@@ -67,14 +156,11 @@ export async function sendMessage(conversationId: string, jobId: string, body: s
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
-  const conversation = await getConversation(conversationId) as Conversation & { job?: { status?: string } };
+  const conversation = await getConversation(conversationId);
   const resolvedJobId = jobId || conversation.job_id;
-  const jobStatus = conversation.job?.status;
-  if (jobStatus === "cancelled" || jobStatus === "completed") {
-    throw new Error("This conversation is read-only because the job is no longer active.");
-  }
-  if (conversation.is_archived) {
-    throw new Error("This conversation has been archived and is read-only.");
+  const lifecycle = getConversationLifecycle(conversation, user.id);
+  if (!lifecycle.isActive) {
+    throw new Error(lifecycle.reason);
   }
 
   const { data, error } = await supabase

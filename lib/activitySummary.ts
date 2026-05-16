@@ -1,6 +1,6 @@
 import { getApplicationCountsForJobs, getMyApplications } from "./applications";
 import { getMyPostedJobs } from "./jobs";
-import { getConversations } from "./messaging";
+import { getConversationLifecycle, getConversations } from "./messaging";
 import { supabase } from "./supabase";
 
 export type ActivitySummary = {
@@ -45,10 +45,10 @@ export async function getActivitySummary(): Promise<ActivitySummary> {
 
   const recentCutoff = Date.now() - RECENT_MESSAGE_WINDOW_MS;
   const recentMessages = conversations.filter((conversation) => {
-    const jobStatus = (conversation as any).job?.status;
     const updatedAt = (conversation as any).updated_at;
+    const lifecycle = getConversationLifecycle(conversation, user.id);
     if (!updatedAt || conversation.is_archived) return false;
-    if (jobStatus === "completed" || jobStatus === "cancelled") return false;
+    if (!lifecycle.isActive) return false;
     return new Date(updatedAt).getTime() >= recentCutoff;
   }).length;
 

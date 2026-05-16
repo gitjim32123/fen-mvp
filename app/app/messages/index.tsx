@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { archiveInactiveConversations, getConversations } from "../../../lib/messaging";
+import { archiveInactiveConversations, getConversationLifecycle, getConversations } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation } from "../../../lib/types";
 import { SignInRequired } from "../../../components/ui/Premium";
@@ -11,7 +11,7 @@ function ConversationCard({
   conversation,
   currentUserId,
 }: {
-  conversation: Conversation & { job?: { title: string; status?: string }; poster?: { display_name: string }; worker?: { display_name: string }; updated_at?: string };
+  conversation: Conversation & { poster?: { display_name: string }; worker?: { display_name: string } };
   currentUserId: string | null;
 }) {
   if (!conversation.id) {
@@ -28,7 +28,7 @@ function ConversationCard({
     ? conversation.worker?.display_name || "Worker"
     : conversation.poster?.display_name || "Poster";
   const jobTitle = conversation.job?.title || "Unknown job";
-  const isInactive = conversation.job?.status === "cancelled" || conversation.job?.status === "completed";
+  const lifecycle = getConversationLifecycle(conversation, currentUserId);
 
   return (
     <Pressable style={styles.card} onPress={() => router.push(`/app/messages/${conversation.id}`)}>
@@ -38,14 +38,14 @@ function ConversationCard({
         {conversation.is_archived ? <Text style={styles.archived}>Archived</Text> : null}
       </View>
       <Text style={styles.job}>{jobTitle}</Text>
-      <Text style={styles.preview}>{isInactive ? `${conversation.job?.status === "completed" ? "Completed" : "Cancelled"} - read only` : "Tap to open conversation"}</Text>
+      <Text style={styles.preview}>{lifecycle.isActive ? "Tap to open conversation" : lifecycle.label}</Text>
       {conversation.updated_at ? <Text style={styles.activity}>Recent activity: {new Date(conversation.updated_at).toLocaleDateString()}</Text> : null}
     </Pressable>
   );
 }
 
 export default function MessagesScreen() {
-  const [conversations, setConversations] = useState<(Conversation & { job?: { title: string; status?: string }; poster?: { display_name: string }; worker?: { display_name: string }; updated_at?: string })[]>([]);
+  const [conversations, setConversations] = useState<(Conversation & { poster?: { display_name: string }; worker?: { display_name: string } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);

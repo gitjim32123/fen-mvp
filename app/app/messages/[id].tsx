@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { getConversation, getMessages, sendMessage } from "../../../lib/messaging";
+import { getConversation, getConversationLifecycle, getMessages, sendMessage } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation, Message } from "../../../lib/types";
 import { SignInRequired } from "../../../components/ui/Premium";
@@ -16,7 +16,7 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [conversation, setConversation] = useState<(Conversation & { job?: { title: string; status?: string }; poster?: { display_name: string }; worker?: { display_name: string } }) | null>(null);
+  const [conversation, setConversation] = useState<(Conversation & { poster?: { display_name: string }; worker?: { display_name: string } }) | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [requiresSignIn, setRequiresSignIn] = useState(false);
@@ -128,7 +128,8 @@ export default function ConversationScreen() {
   const isCompleted = conversation?.job?.status === "completed";
   const isCancelled = conversation?.job?.status === "cancelled";
   const isArchived = !!conversation?.is_archived;
-  const isReadOnly = isCancelled || isCompleted || isArchived;
+  const conversationLifecycle = getConversationLifecycle(conversation, currentUserId);
+  const isReadOnly = !conversationLifecycle.isActive;
 
   function handleReportConversation() {
     if (!currentUserId) {
@@ -189,9 +190,11 @@ export default function ConversationScreen() {
           <Text style={styles.cancelledText}>
             {isCompleted
               ? "This job is completed. This conversation is kept for your records."
-              : isArchived
-                ? "This conversation has been archived and is read-only."
-                : "This job was cancelled. Any new arrangement requires a new agreement."}
+              : isCancelled
+                ? "This job was cancelled. Any new arrangement requires a new agreement."
+                : isArchived
+                  ? "This conversation has been archived and is read-only."
+                  : conversationLifecycle.reason}
           </Text>
         </View>
       ) : (
@@ -199,6 +202,14 @@ export default function ConversationScreen() {
           <Text style={styles.safetyText}>Keep arrangements clear. FEN does not process MVP payments.</Text>
         </View>
       )}
+
+      <View style={styles.guidancePanel}>
+        <Text style={styles.guidanceTitle}>Use messages to agree the details</Text>
+        <Text style={styles.guidanceBullet}>• Confirm the exact task, time, place, and any tools needed.</Text>
+        <Text style={styles.guidanceBullet}>• Keep payment arrangements clear before the job starts.</Text>
+        <Text style={styles.guidanceBullet}>• Do not share sensitive personal or financial details.</Text>
+        <Text style={styles.guidanceBullet}>• If a job is cancelled or completed, start a new agreement before doing anything else.</Text>
+      </View>
 
       <FlatList
         data={messages}
@@ -333,6 +344,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "700",
+  },
+  guidancePanel: {
+    backgroundColor: "#171024",
+    borderBottomWidth: 1,
+    borderBottomColor: "#231A33",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 5,
+  },
+  guidanceTitle: {
+    color: "#E7D9FF",
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 2,
+  },
+  guidanceBullet: {
+    color: "#CBB8F1",
+    fontSize: 12,
+    lineHeight: 17,
   },
   list: {
     flex: 1,
