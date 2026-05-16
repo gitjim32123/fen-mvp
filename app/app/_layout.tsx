@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { Redirect } from "expo-router";
+import { Redirect, useFocusEffect } from "expo-router";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../../components/ui/theme";
 import { supabase } from "../../lib/supabase";
+import { getActivitySummary, type ActivitySummary } from "../../lib/activitySummary";
 
 const tabStyle = {
   backgroundColor: theme.colors.bgDeep,
@@ -14,7 +15,19 @@ const tabStyle = {
   paddingBottom: 8,
 };
 
-function AppTabs() {
+const emptySummary: ActivitySummary = {
+  myJobsBadge: 0,
+  messagesBadge: 0,
+  pendingApplicants: 0,
+  workerActions: 0,
+  recentMessages: 0,
+};
+
+function badgeValue(count: number) {
+  return count > 0 ? count : undefined;
+}
+
+function AppTabs({ summary }: { summary: ActivitySummary }) {
   return (
     <Tabs
       screenOptions={{
@@ -45,6 +58,7 @@ function AppTabs() {
         options={{
           title: "My Jobs",
           tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
+          tabBarBadge: badgeValue(summary.myJobsBadge),
         }}
       />
       <Tabs.Screen
@@ -52,6 +66,7 @@ function AppTabs() {
         options={{
           title: "Messages",
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
+          tabBarBadge: badgeValue(summary.messagesBadge),
         }}
       />
       <Tabs.Screen
@@ -80,6 +95,21 @@ function AppTabs() {
 export default function AppLayout() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [signedIn, setSignedIn] = useState(false);
+  const [summary, setSummary] = useState<ActivitySummary>(emptySummary);
+
+  const refreshSummary = useCallback(async (active = true) => {
+    if (!signedIn) {
+      if (active) setSummary(emptySummary);
+      return;
+    }
+    try {
+      const data = await getActivitySummary();
+      if (active) setSummary(data);
+    } catch (error) {
+      console.log("Could not load activity summary", error);
+      if (active) setSummary(emptySummary);
+    }
+  }, [signedIn]);
 
   useEffect(() => {
     let active = true;
@@ -99,6 +129,7 @@ export default function AppLayout() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
       setSignedIn(!!session);
+      if (!session) setSummary(emptySummary);
       setCheckingSession(false);
     });
 
@@ -107,6 +138,36 @@ export default function AppLayout() {
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    refreshSummary(active);
+    return () => {
+      active = false;
+    };
+  }, [refreshSummary]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      refreshSummary(active);
+      return () => {
+        active = false;
+      };
+    }, [refreshSummary])
+  );
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let active = true;
+    const timer = setInterval(() => {
+      refreshSummary(active);
+    }, 20000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [refreshSummary, signedIn]);
 
   if (checkingSession) {
     return (
@@ -121,5 +182,5 @@ export default function AppLayout() {
     return <Redirect href="/auth/sign-in" />;
   }
 
-  return <AppTabs />;
+  return <AppTabs summary={summary} />;
 }

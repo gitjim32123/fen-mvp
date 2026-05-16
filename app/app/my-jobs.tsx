@@ -127,6 +127,18 @@ export default function MyJobsScreen() {
     const job = (app as any).job;
     return ["completed", "cancelled"].includes(job?.status) || ["withdrawn", "rejected"].includes(app.status);
   });
+  const pendingApplicantCount = activePostedJobs
+    .filter((job) => job.status === "open")
+    .reduce((total, job) => total + (applicationCounts[job.id] || 0), 0);
+  const selectedForWorkCount = appliedJobs.filter((app) => {
+    const job = (app as any).job;
+    return job?.accepted_worker_id === currentUserId && job?.status === "held";
+  }).length;
+  const startConfirmCount = appliedJobs.filter((app) => {
+    const job = (app as any).job;
+    return job?.accepted_worker_id === currentUserId && job?.status === "confirm_pending";
+  }).length;
+  const hasNeedsAttention = pendingApplicantCount > 0 || selectedForWorkCount > 0 || startConfirmCount > 0;
 
   const loadJobs = useCallback(async (active = true, showSpinner = true) => {
     try {
@@ -410,6 +422,27 @@ export default function MyJobsScreen() {
         </View>
       ) : null}
 
+      {hasNeedsAttention ? (
+        <View style={styles.attentionBox}>
+          <Text style={styles.attentionTitle}>Needs attention</Text>
+          {pendingApplicantCount > 0 ? (
+            <Text style={styles.attentionText}>
+              {pendingApplicantCount} applicant{pendingApplicantCount === 1 ? "" : "s"} waiting on your open posted jobs.
+            </Text>
+          ) : null}
+          {selectedForWorkCount > 0 ? (
+            <Text style={styles.attentionText}>
+              You have been selected for {selectedForWorkCount} job{selectedForWorkCount === 1 ? "" : "s"}.
+            </Text>
+          ) : null}
+          {startConfirmCount > 0 ? (
+            <Text style={styles.attentionText}>
+              {startConfirmCount} start time confirmation{startConfirmCount === 1 ? "" : "s"} needed.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       <Text style={styles.sectionTitle}>Posted by me</Text>
       <View style={styles.group}>
         {activePostedJobs.length === 0 ? (
@@ -675,6 +708,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "700",
+  },
+  attentionBox: {
+    backgroundColor: "#1A1025",
+    borderColor: "#6E46A3",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+  },
+  attentionTitle: {
+    color: "#E7D9FF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  attentionText: {
+    color: "#CBB8F1",
+    fontSize: 14,
+    lineHeight: 20,
   },
   emptyText: {
     color: "#CBB8F1",
