@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import { TrustBanner } from "../ui/Premium";
 import { theme } from "../ui/theme";
 import type { Job } from "../../lib/types";
@@ -13,28 +14,89 @@ function budgetFromJob(job: Job): string {
 }
 
 export default function BrowseMap({ jobs, onJobPress }: { jobs: Job[]; selectedId?: string; onJobPress?: (jobId: string) => void }) {
-  const visibleJobs = jobs.slice(0, 6);
+  const visibleJobs = jobs.slice(0, 5);
+  const pulse = useRef(new Animated.Value(0)).current;
+  const sweep = useRef(new Animated.Value(0)).current;
   const markerPositions = [
-    { top: "18%", left: "12%" },
-    { top: "34%", left: "58%" },
-    { top: "58%", left: "26%" },
-    { top: "68%", left: "68%" },
-    { top: "42%", left: "36%" },
-    { top: "20%", left: "78%" },
+    { top: "18%", left: "50%", transform: [{ translateX: -64 }] },
+    { top: "38%", left: "63%" },
+    { top: "58%", left: "34%" },
+    { top: "30%", left: "21%" },
+    { top: "66%", left: "58%" },
   ];
+  const areas = Array.from(new Set(jobs.map(areaFromJob).filter(Boolean))).slice(0, 3);
+
+  useEffect(() => {
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 2400,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const sweepLoop = Animated.loop(
+      Animated.timing(sweep, {
+        toValue: 1,
+        duration: 9000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    pulseLoop.start();
+    sweepLoop.start();
+
+    return () => {
+      pulseLoop.stop();
+      sweepLoop.stop();
+    };
+  }, [pulse, sweep]);
+
+  const pulseStyle = {
+    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.34, 0] }),
+    transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1.2] }) }],
+  };
+  const sweepStyle = {
+    transform: [
+      {
+        rotate: sweep.interpolate({
+          inputRange: [0, 1],
+          outputRange: ["0deg", "360deg"],
+        }),
+      },
+    ],
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.preview}>
+        <View style={styles.backGlow} />
+        <Animated.View style={[styles.radarPulse, pulseStyle]} />
         <View style={styles.radarRingOuter} />
+        <View style={styles.radarRingMiddle} />
         <View style={styles.radarRingInner} />
-        <View style={styles.gridLineHorizontal} />
-        <View style={styles.gridLineVertical} />
+        <Animated.View style={[styles.sweep, sweepStyle]} />
+        <View style={styles.crosshairHorizontal} />
+        <View style={styles.crosshairVertical} />
+        <View style={styles.centerNode} />
         <View style={styles.summaryPanel}>
-          <Text style={styles.kicker}>Local job radar</Text>
+          <Text style={styles.kicker}>Nearby activity</Text>
           <Text style={styles.count}>{jobs.length}</Text>
-          <Text style={styles.label}>visible open jobs</Text>
-          <Text style={styles.helper}>Approximate area view, not a route map.</Text>
+          <Text style={styles.label}>{jobs.length === 1 ? "open job" : "open jobs"} in view</Text>
+          <Text style={styles.helper}>Approximate area activity, not live routing.</Text>
+          {areas.length > 0 && (
+            <Text style={styles.areaLine} numberOfLines={1}>
+              {areas.join(" · ")}
+            </Text>
+          )}
         </View>
         <View style={styles.markerLayer}>
           {visibleJobs.map((job, index) => (
@@ -43,18 +105,30 @@ export default function BrowseMap({ jobs, onJobPress }: { jobs: Job[]; selectedI
               style={[styles.marker, markerPositions[index]]}
               onPress={() => onJobPress?.(job.id)}
             >
-              <View style={styles.markerDot} />
-              <Text style={styles.markerArea} numberOfLines={1}>{areaFromJob(job)}</Text>
-              <Text style={styles.markerMeta} numberOfLines={1}>
-                {normalizeCategory(job.category)} · {budgetFromJob(job)}
-              </Text>
+              <View style={styles.markerStem}>
+                <View style={styles.markerHalo} />
+                <View style={styles.markerDot} />
+              </View>
+              <View style={styles.markerCard}>
+                <Text style={styles.markerArea} numberOfLines={1}>{areaFromJob(job)}</Text>
+                <Text style={styles.markerMeta} numberOfLines={1}>
+                  {normalizeCategory(job.category)}
+                </Text>
+                <Text style={styles.markerBudget} numberOfLines={1}>{budgetFromJob(job)}</Text>
+              </View>
             </Pressable>
           ))}
         </View>
+        {visibleJobs.length === 0 && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No local activity in this view</Text>
+            <Text style={styles.emptyText}>Open jobs will appear here as area markers.</Text>
+          </View>
+        )}
         <View style={styles.legend}>
           <View style={styles.legendItem}>
             <View style={styles.legendDot} />
-            <Text style={styles.legendText}>Open job area</Text>
+            <Text style={styles.legendText}>Area marker</Text>
           </View>
           <Text style={styles.legendNote}>Exact address stays hidden</Text>
         </View>
@@ -71,9 +145,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   preview: {
-    minHeight: 230,
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    minHeight: 280,
+    backgroundColor: "#100B18",
+    borderColor: "rgba(181, 108, 255, 0.22)",
     borderWidth: 1,
     borderRadius: theme.radius.lg,
     alignItems: "center",
@@ -83,49 +157,96 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
+  backGlow: {
+    position: "absolute",
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    backgroundColor: "rgba(181, 108, 255, 0.08)",
+    shadowColor: "#B56CFF",
+    shadowOpacity: 0.45,
+    shadowRadius: 52,
+  },
+  radarPulse: {
+    position: "absolute",
+    width: 290,
+    height: 290,
+    borderRadius: 145,
+    borderWidth: 1,
+    borderColor: "rgba(181, 108, 255, 0.32)",
+    backgroundColor: "rgba(181, 108, 255, 0.05)",
+  },
   radarRingOuter: {
     position: "absolute",
-    width: 240,
-    height: 240,
-    borderRadius: 120,
+    width: 270,
+    height: 270,
+    borderRadius: 135,
     borderWidth: 1,
-    borderColor: "rgba(181, 108, 255, 0.16)",
+    borderColor: "rgba(181, 108, 255, 0.18)",
+  },
+  radarRingMiddle: {
+    position: "absolute",
+    width: 192,
+    height: 192,
+    borderRadius: 96,
+    borderWidth: 1,
+    borderColor: "rgba(203, 184, 241, 0.14)",
   },
   radarRingInner: {
     position: "absolute",
-    width: 130,
-    height: 130,
-    borderRadius: 65,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     borderWidth: 1,
-    borderColor: "rgba(181, 108, 255, 0.25)",
+    borderColor: "rgba(181, 108, 255, 0.28)",
   },
-  gridLineHorizontal: {
+  sweep: {
     position: "absolute",
-    left: 0,
-    right: 0,
+    width: 270,
+    height: 270,
+    borderRadius: 135,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(181, 108, 255, 0.34)",
+  },
+  crosshairHorizontal: {
+    position: "absolute",
+    left: "16%",
+    right: "16%",
     top: "50%",
     height: 1,
-    backgroundColor: "#2F2441",
+    backgroundColor: "rgba(203, 184, 241, 0.08)",
   },
-  gridLineVertical: {
+  crosshairVertical: {
     position: "absolute",
-    top: 0,
-    bottom: 0,
+    top: "12%",
+    bottom: "12%",
     left: "50%",
     width: 1,
-    backgroundColor: "#2F2441",
+    backgroundColor: "rgba(203, 184, 241, 0.08)",
+  },
+  centerNode: {
+    position: "absolute",
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: "#F0E2FF",
+    borderWidth: 2,
+    borderColor: "#B56CFF",
+    shadowColor: "#B56CFF",
+    shadowOpacity: 0.55,
+    shadowRadius: 12,
   },
   summaryPanel: {
     position: "absolute",
     left: 14,
     bottom: 14,
-    backgroundColor: "rgba(14, 10, 20, 0.88)",
-    borderColor: theme.colors.border,
+    backgroundColor: "rgba(14, 10, 20, 0.9)",
+    borderColor: "rgba(181, 108, 255, 0.2)",
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    maxWidth: 168,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    maxWidth: 204,
   },
   kicker: {
     color: theme.colors.accent,
@@ -136,8 +257,9 @@ const styles = StyleSheet.create({
   },
   count: {
     color: theme.colors.text,
-    fontSize: 38,
+    fontSize: 40,
     fontWeight: "800",
+    lineHeight: 44,
   },
   label: {
     color: theme.colors.muted,
@@ -150,29 +272,57 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 2,
   },
+  areaLine: {
+    color: "#E7D9FF",
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 8,
+  },
   markerLayer: {
     ...StyleSheet.absoluteFillObject,
   },
   marker: {
     position: "absolute",
-    minWidth: 122,
-    maxWidth: 152,
-    backgroundColor: "rgba(42, 30, 61, 0.94)",
-    borderColor: theme.colors.accent,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    maxWidth: 168,
+  },
+  markerStem: {
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  markerHalo: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(181, 108, 255, 0.16)",
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    shadowColor: "#B56CFF",
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
+    borderColor: "rgba(181, 108, 255, 0.24)",
   },
   markerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
     backgroundColor: theme.colors.accent,
-    marginBottom: 5,
+    borderWidth: 1,
+    borderColor: "#F0E2FF",
+    shadowColor: "#B56CFF",
+    shadowOpacity: 0.55,
+    shadowRadius: 9,
+  },
+  markerCard: {
+    minWidth: 104,
+    maxWidth: 132,
+    backgroundColor: "rgba(28, 19, 42, 0.88)",
+    borderColor: "rgba(231, 217, 255, 0.12)",
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   markerArea: {
     color: theme.colors.text,
@@ -181,17 +331,40 @@ const styles = StyleSheet.create({
   },
   markerMeta: {
     color: theme.colors.muted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
+  },
+  markerBudget: {
+    color: theme.colors.accent,
+    fontSize: 11,
+    fontWeight: "900",
+    marginTop: 1,
+  },
+  emptyState: {
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 22,
+  },
+  emptyTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  emptyText: {
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
   },
   legend: {
     position: "absolute",
     right: 14,
     top: 14,
-    backgroundColor: "rgba(14, 10, 20, 0.82)",
-    borderColor: theme.colors.border,
+    backgroundColor: "rgba(14, 10, 20, 0.86)",
+    borderColor: "rgba(181, 108, 255, 0.18)",
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 8,
     gap: 4,
