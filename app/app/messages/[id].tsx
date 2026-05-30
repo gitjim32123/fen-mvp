@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { getConversation, getConversationLifecycle, getMessages, sendMessage } from "../../../lib/messaging";
+import { hasReported, submitReport } from "../../../lib/reports";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation, Message } from "../../../lib/types";
 import { FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
@@ -19,6 +20,8 @@ export default function ConversationScreen() {
   const [conversation, setConversation] = useState<(Conversation & { poster?: { display_name: string }; worker?: { display_name: string } }) | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [conversationFeedback, setConversationFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [reportingConversation, setReportingConversation] = useState(false);
   const [requiresSignIn, setRequiresSignIn] = useState(false);
 
   const loadConversation = useCallback(async (active = true, showSpinner = true) => {
@@ -58,6 +61,8 @@ export default function ConversationScreen() {
 
   useEffect(() => {
     let active = true;
+    setSendError(null);
+    setConversationFeedback(null);
     loadConversation(active);
     return () => { active = false; };
   }, [loadConversation]);
@@ -65,6 +70,8 @@ export default function ConversationScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setSendError(null);
+      setConversationFeedback(null);
       loadConversation(active, false);
       return () => { active = false; };
     }, [loadConversation])
@@ -93,6 +100,7 @@ export default function ConversationScreen() {
     try {
       setSending(true);
       setSendError(null);
+      setConversationFeedback(null);
       const msg = await sendMessage(conversationId, "", newMessage.trim());
       setMessages((prev) => [...prev, msg as Message]);
       setNewMessage("");
@@ -131,16 +139,42 @@ export default function ConversationScreen() {
   const conversationLifecycle = getConversationLifecycle(conversation, currentUserId);
   const isReadOnly = !conversationLifecycle.isActive;
 
-  function handleReportConversation() {
+  async function handleReportConversation() {
     if (!currentUserId) {
       setSendError("Sign in before reporting this conversation.");
       Alert.alert("Sign in required", "Sign in before reporting this conversation.");
       return;
     }
-    setSendError("Report noted locally for MVP. Please keep screenshots.");
-    Alert.alert(
-      "Report noted locally for MVP. Please keep screenshots and do not continue if unsafe."
-    );
+    if (!conversation?.job_id || !conversationId) {
+      setConversationFeedback({ type: "error", text: "Report could not be sent because this conversation is missing job details." });
+      return;
+    }
+    try {
+      setReportingConversation(true);
+      setSendError(null);
+      setConversationFeedback(null);
+      const alreadyReported = await hasReported(conversation.job_id, currentUserId);
+      if (!alreadyReported) {
+        await submitReport({
+          jobId: conversation.job_id,
+          reporterId: currentUserId,
+          reason: "Inappropriate content",
+          details: `Reported from conversation ${conversationId}. User was advised to keep screenshots if unsafe.`,
+        });
+      }
+      const text = alreadyReported
+        ? "You have already sent a report for this job. Please keep screenshots if unsafe."
+        : "Report sent. Please keep screenshots if unsafe.";
+      setConversationFeedback({ type: "success", text });
+      Alert.alert("Report sent", text);
+    } catch (err: any) {
+      console.log("Could not report conversation", err?.message);
+      const text = "Report could not be sent. Please keep screenshots if unsafe.";
+      setConversationFeedback({ type: "error", text });
+      Alert.alert("Could not send report", text);
+    } finally {
+      setReportingConversation(false);
+    }
   }
 
   if (loading) {
@@ -174,8 +208,8 @@ export default function ConversationScreen() {
               <Text style={styles.smallButtonText}>Open job</Text>
             </Pressable>
           ) : null}
-          <Pressable style={styles.smallButton} onPress={handleReportConversation}>
-            <Text style={styles.smallButtonText}>Report conversation</Text>
+          <Pressable style={styles.smallButton} onPress={handleReportConversation} disabled={reportingConversation}>
+            <Text style={styles.smallButtonText}>{reportingConversation ? "Reporting..." : "Report conversation"}</Text>
           </Pressable>
         </View>
       </View>
@@ -204,6 +238,12 @@ export default function ConversationScreen() {
         <Text style={styles.guidanceBullet}>• Do not share sensitive personal or financial details.</Text>
         <Text style={styles.guidanceBullet}>• If a job is cancelled or completed, start a new agreement before doing anything else.</Text>
       </View>
+
+      {conversationFeedback ? (
+        <View style={styles.feedbackWrap}>
+          <FeedbackNotice type={conversationFeedback.type} text={conversationFeedback.text} />
+        </View>
+      ) : null}
 
       <FlatList
         data={messages}
@@ -364,6 +404,10 @@ const styles = StyleSheet.create({
     color: "#CBB8F1",
     fontSize: 12,
     lineHeight: 17,
+  },
+  feedbackWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
   list: {
     flex: 1,

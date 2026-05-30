@@ -6,16 +6,28 @@ export type ModerationResult = {
 };
 
 const BLOCKED_JOB_TYPES: { pattern: RegExp; label: string }[] = [
-  { pattern: /\b(gas|gas safe|boiler|carbon monoxide)\b/i, label: "Gas or boiler work needs a qualified professional." },
-  { pattern: /\b(electrical|electrician|rewire|consumer unit|fuse box|qualified electrician)\b/i, label: "Electrical work needs a qualified professional." },
-  { pattern: /\b(asbestos|roofing|roofer|roof repair)\b/i, label: "Asbestos and roofing work are not suitable for FEN MVP." },
+  { pattern: /\b(gas|gas engineer|gas safe|boiler|carbon monoxide)\b/i, label: "Gas or boiler work needs a qualified professional." },
+  { pattern: /\b(electrical work|electrical|electrician|rewire|consumer unit|fuse box|qualified electrician)\b/i, label: "Electrical work needs a qualified professional." },
+  { pattern: /\b(asbestos|roofing|roofer|roof repair|gutter repair at height)\b/i, label: "Asbestos, roofing, and high-risk height work are not suitable for FEN MVP." },
+  { pattern: /\b(plumber|plumbing)\b/i, label: "Plumbing work needs a qualified professional." },
+  { pattern: /\b(tree surgeon|tree surgery|tree felling|fell a tree|chainsaw)\b/i, label: "Tree surgery and chainsaw work are not suitable for FEN MVP." },
+  { pattern: /\b(scrap man|scrap metal|scrap collection|waste carrier|licensed waste)\b/i, label: "Scrap and licensed waste work are not suitable for FEN MVP." },
+  { pattern: /\b(construction|building work|builder|structural|extension|conversion)\b/i, label: "Construction and structural work are not suitable for FEN MVP." },
   { pattern: /\b(medical|medicine|medication|nursing|care work|carer|elder care|personal care|emergency|first aid)\b/i, label: "Medical, care, and emergency work is not allowed on FEN MVP." },
   { pattern: /\b(childcare|babysit|babysitting|look after my child|school pickup)\b/i, label: "Childcare is not allowed on FEN MVP." },
   { pattern: /\b(adult service|escort|weapon|knife|gun|drugs?|cocaine|cannabis|illegal)\b/i, label: "Illegal, adult, weapons, or drug-related work is not allowed." },
 ];
 
+const WARNING_JOB_TYPES: { pattern: RegExp; label: string }[] = [
+  { pattern: /\b(landscaper|landscaping|landscape gardener)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+  { pattern: /\b(gardening service|garden services|regular gardener|professional gardener)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+  { pattern: /\b(van man|man with a van|man and van)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+  { pattern: /\b(rubbish clearance|waste removal)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+  { pattern: /\b(handyman service|property maintenance|professional handyman)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+];
+
 const BUSINESS_AD_TYPES: { pattern: RegExp; label: string }[] = [
-  { pattern: /\b(window cleaner|professional\s+(gardener|cleaner|service|handyman|builder|trader)|man\s+(and|in)\s+van(\s+service)?|plumber|gas engineer|tradesman|qualified|certified|business service)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
+  { pattern: /\b(window cleaner|professional\s+(cleaner|service|builder|trader)|gas engineer|tradesman|qualified|certified|business service)\b/i, label: "FEN is for one-off local help, not professional service adverts or regulated trade work." },
   { pattern: /\b(my|our)\s+(company|business)\s+(offers?|provides?|advertis|promot)/i, label: "Business advertising is not allowed." },
   { pattern: /\b(company|business)\s+offering\s+services?\b/i, label: "Business advertising is not allowed." },
   { pattern: /\b(advertis(e|ing)\s+my\s+business|business\s+promotion|service\s+packages?|book\s+my\s+service)\b/i, label: "Business advertising is not allowed." },
@@ -30,6 +42,12 @@ export function checkJobSafety(input: { title: string; description: string }): M
   for (const item of BLOCKED_JOB_TYPES) {
     if (item.pattern.test(text)) {
       return { score: 10, signals: [item.label], action: "block", reason: item.label };
+    }
+  }
+
+  for (const item of WARNING_JOB_TYPES) {
+    if (item.pattern.test(text)) {
+      return { score: 4, signals: [item.label], action: "warn", reason: item.label };
     }
   }
 
@@ -67,7 +85,7 @@ const MEDIUM_SIGNALS: { pattern: RegExp; label: string; points: number }[] = [
   { pattern: /\d+\s+years?\s+(of\s+)?experience/gi, label: '"Years experience" found', points: 2 },
   { pattern: /competitive\s+(rates?|price)/gi, label: '"Competitive rates" found', points: 2 },
   { pattern: /professional\s+(service|handyman|builder|cleaner|trader)/gi, label: '"Professional service" found', points: 2 },
-  { pattern: /\b(window cleaner|professional gardener|professional cleaner|man and van|man in van|tradesman|qualified|certified|business service)\b/gi, label: "Professional service wording found", points: 2 },
+  { pattern: /\b(window cleaner|professional gardener|professional cleaner|man and van|tradesman|qualified|certified|business service)\b/gi, label: "Professional service wording found", points: 2 },
   { pattern: /reliable\s+(service|trader|worker)/gi, label: '"Reliable service" found', points: 2 },
   { pattern: /highly\s+rated/gi, label: '"Highly rated" found', points: 2 },
   { pattern: /check\s+my\s+(reviews?|profile|page)/gi, label: '"Check my reviews" found', points: 2 },

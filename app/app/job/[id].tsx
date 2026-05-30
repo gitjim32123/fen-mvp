@@ -32,6 +32,7 @@ import {
 import { getProfile } from "../../../lib/auth";
 import { estimateMiles, estimateTravelMinutes, geocodePostcode, getCurrentGpsPoint, getTravelEstimateUnavailableText } from "../../../lib/geocoding";
 import { createOrOpenConversation } from "../../../lib/messaging";
+import { hasReported, submitReport } from "../../../lib/reports";
 import { supabase } from "../../../lib/supabase";
 import type { Application, Job } from "../../../lib/types";
 import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
@@ -194,6 +195,7 @@ export default function JobDetailScreen() {
   const [travelEstimateText, setTravelEstimateText] = useState<string>(getTravelEstimateUnavailableText());
   const [travelMinutes, setTravelMinutes] = useState<number | undefined>(undefined);
   const [openingConversation, setOpeningConversation] = useState(false);
+  const [reportingJob, setReportingJob] = useState(false);
 
   const resetFeedback = useCallback(() => {
     setApplyMessage(null);
@@ -618,17 +620,41 @@ export default function JobDetailScreen() {
     });
   }
 
-  function handleReport() {
+  async function handleReport() {
     markFeedbackForCurrentJob();
     if (!currentUserId) {
       setActionMessage({ type: "error", text: "Sign in before reporting this job." });
       Alert.alert("Sign in required", "Sign in before reporting this job.");
       return;
     }
-    setActionMessage({ type: "success", text: "Report noted locally for MVP. Please keep screenshots." });
-    Alert.alert(
-      "Report noted locally for MVP. Please keep screenshots and do not continue if unsafe."
-    );
+    if (!jobId) {
+      setActionMessage({ type: "error", text: "Report could not be sent because this job is missing details." });
+      return;
+    }
+    try {
+      setReportingJob(true);
+      const alreadyReported = await hasReported(jobId, currentUserId);
+      if (!alreadyReported) {
+        await submitReport({
+          jobId,
+          reporterId: currentUserId,
+          reason: "Inappropriate content",
+          details: "Reported from job detail screen. User was advised to keep screenshots if unsafe.",
+        });
+      }
+      const text = alreadyReported
+        ? "You have already sent a report for this job. Please keep screenshots if unsafe."
+        : "Report sent. Please keep screenshots if unsafe.";
+      setActionMessage({ type: "success", text });
+      Alert.alert("Report sent", text);
+    } catch (err: any) {
+      console.log("Could not report job", err?.message);
+      const text = "Report could not be sent. Please keep screenshots if unsafe.";
+      setActionMessage({ type: "error", text });
+      Alert.alert("Could not send report", text);
+    } finally {
+      setReportingJob(false);
+    }
   }
 
   function handleReopenJob() {
@@ -1101,8 +1127,8 @@ export default function JobDetailScreen() {
         )}
 
         {isSignedIn && (
-          <Pressable style={styles.reportBtn} onPress={handleReport}>
-            <Text style={styles.reportBtnText}>Report this job</Text>
+          <Pressable style={[styles.reportBtn, reportingJob && styles.reportBtnDisabled]} onPress={handleReport} disabled={reportingJob}>
+            <Text style={styles.reportBtnText}>{reportingJob ? "Reporting..." : "Report this job"}</Text>
           </Pressable>
         )}
       </ScrollView>
@@ -1522,6 +1548,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 12,
     alignItems: "center",
+  },
+  reportBtnDisabled: {
+    opacity: 0.6,
   },
   reportBtnText: {
     color: "#A590C9",
