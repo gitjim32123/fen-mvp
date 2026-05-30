@@ -454,9 +454,6 @@ export default function MyJobsScreen() {
       <Pressable style={styles.clearButton} onPress={handleClearOldJobs} disabled={clearingOld}>
         <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old posted jobs"}</Text>
       </Pressable>
-      <Pressable style={styles.clearButton} onPress={() => loadJobs(true, false)} disabled={!!busyJobId || clearingOld}>
-        <Text style={styles.clearButtonText}>Refresh jobs</Text>
-      </Pressable>
 
       {errorText ? (
         <View style={styles.errorBox}>

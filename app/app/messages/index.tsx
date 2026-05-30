@@ -153,9 +153,6 @@ export default function MessagesScreen() {
       <Pressable style={styles.clearButton} onPress={handleClearOldChats} disabled={clearingOld}>
         <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old inactive chats"}</Text>
       </Pressable>
-      <Pressable style={styles.clearButton} onPress={() => loadConversations(true, false)} disabled={clearingOld}>
-        <Text style={styles.clearButtonText}>Refresh messages</Text>
-      </Pressable>
 
       {errorText ? (
         <View style={styles.errorBox}>
