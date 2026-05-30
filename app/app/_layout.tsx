@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
 import { Redirect, useFocusEffect } from "expo-router";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../../components/ui/theme";
+import { LoadingState } from "../../components/ui/Premium";
 import { supabase } from "../../lib/supabase";
 import { getActivitySummary, type ActivitySummary } from "../../lib/activitySummary";
 
@@ -179,12 +179,7 @@ export default function AppLayout() {
   }, [refreshSummary, signedIn]);
 
   if (checkingSession) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.bg }}>
-        <ActivityIndicator size="large" color={theme.colors.accent} />
-        <Text style={{ color: theme.colors.muted, marginTop: 12 }}>Checking sign in...</Text>
-      </View>
-    );
+    return <LoadingState text="Checking sign in..." fullScreen />;
   }
 
   if (!signedIn) {

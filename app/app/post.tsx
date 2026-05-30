@@ -9,7 +9,7 @@ import { checkJobSafety, scoreBusinessAdRisk } from "../../lib/moderation";
 import { checkRepeatPosting } from "../../lib/spam";
 import { estimateMiles, estimateTravelMinutes, geocodePostcode, roundToFive } from "../../lib/geocoding";
 import { confirmAction } from "../../lib/confirmAction";
-import { SignInRequired } from "../../components/ui/Premium";
+import { FeedbackNotice, LoadingState, SignInRequired } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, type JobCategory } from "../../lib/categories";
 
 type Urgency = "Need now" | "Today" | "Flexible";
@@ -515,12 +515,7 @@ export default function PostScreen() {
   const canPost = title.trim() && description.trim() && budget.trim() && !moderationBlock && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting && !postedJobId;
 
   if (!authChecked) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#B56CFF" />
-        <Text style={styles.loadingText}>Checking sign in…</Text>
-      </View>
-    );
+    return <LoadingState text="Checking sign in..." fullScreen />;
   }
 
   if (!currentUserId) {
@@ -535,6 +530,7 @@ export default function PostScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Post a job</Text>
       <Text style={styles.subtitle}>Keep it simple. The aim is to post in under a minute.</Text>
+      <FeedbackNotice type="info" text="Clear task details help nearby FEN helpers decide if they can apply." />
 
       <TextInput placeholder="Job title" placeholderTextColor="#8D79AF" style={styles.input} value={title} onChangeText={setTitle} />
 
@@ -585,10 +581,10 @@ export default function PostScreen() {
       />
 
       {moderationWarning && (
-        <Text style={styles.warningText}>{moderationWarning}</Text>
+        <FeedbackNotice type="warning" text={moderationWarning} />
       )}
       {moderationBlock && (
-        <Text style={styles.blockText}>{moderationBlock}</Text>
+        <FeedbackNotice type="error" text={moderationBlock} />
       )}
 
       <TextInput placeholder="Budget in GBP" placeholderTextColor="#8D79AF" style={[styles.input, aiSuggested && styles.aiFilled]} keyboardType="numeric" value={budget} onChangeText={(text: string) => { setBudget(text); setAiSuggested(false); }} />
@@ -666,10 +662,10 @@ export default function PostScreen() {
       )}
 
       {postError && (
-        <Text style={styles.blockText}>{postError}</Text>
+        <FeedbackNotice type="error" text={postError} />
       )}
       {postSuccess && (
-        <Text style={styles.successText}>{postSuccess}</Text>
+        <FeedbackNotice type="success" text={postSuccess} />
       )}
 
       <Text style={styles.photoHint}>Add photos to help others understand the job (avoid logos or adverts)</Text>
@@ -679,12 +675,13 @@ export default function PostScreen() {
 
       <View style={styles.notice}>
         <Text style={styles.noticeTitle}>Suggestions are guidance only</Text>
-        <Text style={styles.noticeText}>Final job details, pricing, and arrangements are chosen by the users. FEN does not process payments — any money is agreed and exchanged directly between users.</Text>
+        <Text style={styles.noticeText}>Final job details, pricing, and arrangements are chosen by users. FEN does not process payments in MVP; any money is agreed directly between users.</Text>
       </View>
 
-      <View style={styles.policyNotice}>
-        <Text style={styles.policyText}>FEN is for local one-off jobs and immediate help requests. Business advertising or repeated service promotion is not allowed.</Text>
-      </View>
+      <FeedbackNotice
+        type="info"
+        text="FEN is for local one-off jobs and immediate help requests. Business advertising or repeated service promotion is not allowed."
+      />
 
       <Pressable style={[styles.primaryButton, !canPost && styles.disabledButton]} onPress={handlePost} disabled={!canPost}>
         {posting ? (

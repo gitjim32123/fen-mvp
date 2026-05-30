@@ -121,7 +121,7 @@ export default function SignInScreen() {
         </View>
 
         <TrustBanner title="MVP payments">
-          FEN does not process payments yet. Any payment is arranged directly between users.
+          FEN does not process payments in this MVP. Any payment is agreed directly between users.
         </TrustBanner>
 
         <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />

@@ -40,8 +40,8 @@ export default function SignUpScreen() {
       return;
     }
     if (!understandsPlatform) {
-      setErrorText("Confirm you understand FEN connects users and does not process payments in MVP.");
-      Alert.alert("Confirm platform basics", "Confirm you understand FEN connects users and does not process payments in MVP.");
+      setErrorText("Confirm you understand FEN is a connection platform and does not process payments in MVP.");
+      Alert.alert("Confirm platform basics", "Confirm you understand FEN is a connection platform and does not process payments in MVP.");
       return;
     }
     try {
@@ -96,7 +96,7 @@ export default function SignUpScreen() {
         </View>
 
         <TrustBanner title="How FEN works">
-          FEN connects people. FEN does not process payments in MVP; payment is arranged directly between users.
+          FEN connects local people. It does not employ helpers, supervise work, or process payments in MVP.
         </TrustBanner>
 
         <Pressable
@@ -109,7 +109,7 @@ export default function SignUpScreen() {
           </View>
           <View style={styles.confirmCopy}>
             <Text style={styles.confirmText}>
-              I understand FEN is a connection platform, not an employer or payment processor.
+              I understand FEN is a connection platform, not an employer, supervisor, or payment processor.
             </Text>
             {!understandsPlatform ? (
               <Text style={styles.confirmHint}>Tick this to activate Create account.</Text>

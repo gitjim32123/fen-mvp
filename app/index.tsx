@@ -56,7 +56,7 @@ export default function Index() {
         >
           <Image source={require("../assets/images/fen-logo.png")} style={styles.logo} resizeMode="contain" />
           <Text style={styles.tagline}>Fast Earn Nearby</Text>
-          <Text style={styles.subtle}>Local help. Clear agreements. Direct payment.</Text>
+          <Text style={styles.subtle}>Local help. Clear agreements. Direct arrangements.</Text>
         </Animated.View>
       </View>
     );

@@ -34,7 +34,7 @@ import { estimateMiles, estimateTravelMinutes, geocodePostcode, getCurrentGpsPoi
 import { createOrOpenConversation } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Application, Job } from "../../../lib/types";
-import { SignInRequired } from "../../../components/ui/Premium";
+import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
 import { normalizeCategory } from "../../../lib/categories";
 import { confirmAction } from "../../../lib/confirmAction";
 
@@ -404,6 +404,7 @@ export default function JobDetailScreen() {
       try {
         setWithdrawingApplication(true);
         setApplyError(null);
+        setApplyMessage(null);
         const application = await withdrawApplication(jobId);
         setMyApplication(application);
         await loadJobState(true, false, true);
@@ -766,14 +767,7 @@ export default function JobDetailScreen() {
   }
 
   if (loading) {
-    return (
-      <>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#B56CFF" />
-          <Text style={styles.loadingText}>Loading job…</Text>
-        </View>
-      </>
-    );
+    return <LoadingState text="Loading job..." fullScreen />;
   }
 
   if (errorText || !job) {
@@ -864,11 +858,7 @@ export default function JobDetailScreen() {
         )}
 
         {actionMessage && feedbackJobId === jobId && (
-          <View style={actionMessage.type === "success" ? styles.successBanner : styles.errorBanner}>
-            <Text style={actionMessage.type === "success" ? styles.successBannerText : styles.errorBannerText}>
-              {actionMessage.text}
-            </Text>
-          </View>
+          <FeedbackNotice type={actionMessage.type} text={actionMessage.text} />
         )}
 
         {!isSignedIn && (
@@ -1036,11 +1026,11 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {!isPoster && !isSelectedWorker && applyMessage && feedbackJobId === jobId && job.status === "open" && !hasSelectedWorker && (
-          <Text style={styles.successText}>{applyMessage}</Text>
+        {!actionMessage && !applyError && !isPoster && !isSelectedWorker && applyMessage && feedbackJobId === jobId && job.status === "open" && !hasSelectedWorker && (
+          <FeedbackNotice type="success" text={applyMessage} />
         )}
-        {!isPoster && !isSelectedWorker && applyError && feedbackJobId === jobId && (
-          <Text style={styles.inlineErrorText}>{applyError}</Text>
+        {!actionMessage && !isPoster && !isSelectedWorker && applyError && feedbackJobId === jobId && (
+          <FeedbackNotice type="error" text={applyError} />
         )}
 
         {isSignedIn && !isPoster && !isSelectedWorker && !hasApplied && !applicationsClosed && !hasSelectedWorker && (
@@ -1129,11 +1119,14 @@ export default function JobDetailScreen() {
               <Text style={styles.modalTitle}>Applications</Text>
 
               {applicationsLoading ? (
-                <ActivityIndicator size="small" color="#B56CFF" />
+                <LoadingState text="Loading applications..." compact />
               ) : applicationsError ? (
-                <Text style={styles.errorText}>{applicationsError}</Text>
+                <FeedbackNotice type="error" text={applicationsError} />
               ) : activeApplications.length === 0 ? (
-                <Text style={styles.emptyText}>No applications yet.</Text>
+                <EmptyState
+                  title="No applicants yet"
+                  text="Applications from nearby FEN helpers will appear here."
+                />
               ) : (
                 <ScrollView style={styles.applicationsList}>
                   {activeApplications.map((application) => {

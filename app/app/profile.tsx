@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { getProfile, signOut, updateProfile } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 import type { Profile } from "../../lib/types";
 import type { TransportMode } from "../../lib/types";
-import { InfoMetric, SignInRequired, TrustBanner } from "../../components/ui/Premium";
+import { FeedbackNotice, InfoMetric, LoadingState, SignInRequired, TrustBanner } from "../../components/ui/Premium";
 
 const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
   { value: "walk", label: "Walk" },
@@ -22,6 +22,11 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
+}
+
+function getProfileInitial(profile: Profile | null) {
+  const source = profile?.display_name?.trim() || profile?.email?.trim() || "FEN";
+  return source.charAt(0).toUpperCase();
 }
 
 export default function ProfileScreen() {
@@ -69,6 +74,12 @@ export default function ProfileScreen() {
     load();
     return () => { active = false; };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setActionMessage(null);
+    }, [])
+  );
 
   async function handleLogout() {
     try {
@@ -140,14 +151,23 @@ export default function ProfileScreen() {
     profile?.bio,
     profile?.transport_mode && profile.transport_mode !== "unspecified",
   ].filter(Boolean).length;
+  const completenessPercent = Math.round((completeness / 4) * 100);
+  const displayName = profile?.display_name || "No name set";
+  const emailText = profile?.email || "Email not available";
+  const postcodeText = profile?.postcode || "Postcode not set";
+  const bioText = profile?.bio || "Add a short FEN bio so people know what help you offer or need.";
+  const completionItems = [
+    { label: "Display name", done: !!profile?.display_name },
+    { label: "Postcode", done: !!profile?.postcode },
+    { label: "Bio", done: !!profile?.bio },
+    { label: "Transport", done: !!(profile?.transport_mode && profile.transport_mode !== "unspecified") },
+  ];
+  const completionHelp = completeness === 4
+    ? "Your profile has the basics FEN uses for local context."
+    : "Add the missing basics to make your FEN profile easier to understand.";
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#B56CFF" />
-        <Text style={styles.loadingText}>Loading profile…</Text>
-      </View>
-    );
+    return <LoadingState text="Loading profile..." fullScreen />;
   }
 
   if (!currentUserId) {
@@ -162,11 +182,10 @@ export default function ProfileScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Profile</Text>
       <Text style={styles.subtitle}>Keep your details simple and easy to update.</Text>
+      <FeedbackNotice type="info" text="Your postcode and transport help FEN show local context and travel estimates." />
 
       {actionMessage ? (
-        <Text style={actionMessage.type === "success" ? styles.successText : styles.inlineErrorText}>
-          {actionMessage.text}
-        </Text>
+        <FeedbackNotice type={actionMessage.type} text={actionMessage.text} />
       ) : null}
 
       {editing ? (
@@ -233,20 +252,57 @@ export default function ProfileScreen() {
         </>
       ) : (
         <>
-          <View style={styles.card}>
-            <Text style={styles.name}>{profile?.display_name || "No name set"}</Text>
-            <Text style={styles.meta}>{profile?.postcode || "—"} · {transportLabel}</Text>
-            <Text style={styles.bio}>{profile?.bio || "No bio yet."}</Text>
+          <View style={styles.identityCard}>
+            <View style={styles.identityHeader}>
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>{getProfileInitial(profile)}</Text>
+              </View>
+              <View style={styles.identityText}>
+                <Text style={styles.name}>{displayName}</Text>
+                <Text style={styles.emailText}>{emailText}</Text>
+              </View>
+            </View>
+            <View style={styles.metaRow}>
+              <View style={styles.metaPill}>
+                <Text style={styles.metaLabel}>Area</Text>
+                <Text style={styles.metaValue}>{postcodeText}</Text>
+              </View>
+              <View style={styles.metaPill}>
+                <Text style={styles.metaLabel}>Transport</Text>
+                <Text style={styles.metaValue}>{transportLabel}</Text>
+              </View>
+            </View>
+            <Text style={profile?.bio ? styles.bio : styles.bioPrompt}>{bioText}</Text>
           </View>
 
           <View style={styles.metricsRow}>
-            <InfoMetric label="Profile" value={`${Math.round((completeness / 4) * 100)}%`} />
+            <InfoMetric label="Complete" value={`${completenessPercent}%`} />
             <InfoMetric label="Completed" value={String(profile?.completed_jobs_count ?? 0)} />
             <InfoMetric label="Plan" value={profile?.plan_tier === "worker_plus" ? "Plus" : "Free"} />
           </View>
 
+          <View style={styles.completionCard}>
+            <View style={styles.completionHeader}>
+              <Text style={styles.completionTitle}>Profile basics</Text>
+              <Text style={styles.completionPercent}>{completenessPercent}%</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${completenessPercent}%` }]} />
+            </View>
+            <Text style={styles.completionText}>{completionHelp}</Text>
+            <View style={styles.completionList}>
+              {completionItems.map((item) => (
+                <View key={item.label} style={styles.completionItem}>
+                  <View style={[styles.completionDot, item.done && styles.completionDotDone]} />
+                  <Text style={item.done ? styles.completionItemDone : styles.completionItemText}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
           <View style={styles.card}>
             <InfoRow label="Display name" value={profile?.display_name || "—"} />
+            <InfoRow label="Email" value={emailText} />
             <InfoRow label="Postcode" value={profile?.postcode || "—"} />
             <InfoRow label="Transport" value={transportLabel} />
             <InfoRow label="Plan" value={profile?.plan_tier === "worker_plus" ? "Worker Plus" : "Free"} />
@@ -260,7 +316,7 @@ export default function ProfileScreen() {
       )}
 
       <TrustBanner title="About FEN">
-        FEN connects people for local jobs. It does not provide the work, employ helpers, or process payments in MVP.
+        FEN connects local people. It does not employ helpers, supervise work, guarantee outcomes, or process payments in MVP.
       </TrustBanner>
 
       <View style={styles.legalRow}>
@@ -306,20 +362,96 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
   },
+  identityCard: {
+    backgroundColor: "#171024",
+    borderWidth: 1,
+    borderColor: "#5B3A87",
+    borderRadius: 18,
+    padding: 16,
+    gap: 14,
+  },
+  identityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  avatarCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#2A1E3D",
+    borderColor: "#B56CFF",
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    color: "#F0E2FF",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  identityText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
   name: {
     color: "#E7D9FF",
     fontSize: 22,
     fontWeight: "800",
+  },
+  emailText: {
+    color: "#A590C9",
+    fontSize: 13,
+    lineHeight: 18,
   },
   meta: {
     color: "#B56CFF",
     fontSize: 14,
     fontWeight: "700",
   },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  metaPill: {
+    flex: 1,
+    minWidth: 150,
+    backgroundColor: "#0E0A14",
+    borderColor: "#3A2B52",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 3,
+  },
+  metaLabel: {
+    color: "#A590C9",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  metaValue: {
+    color: "#E7D9FF",
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "800",
+  },
   bio: {
     color: "#CBB8F1",
     fontSize: 15,
     lineHeight: 22,
+  },
+  bioPrompt: {
+    color: "#CBB8F1",
+    backgroundColor: "#20172E",
+    borderColor: "#3A2B52",
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    fontSize: 14,
+    lineHeight: 20,
   },
   infoRow: {
     paddingVertical: 6,
@@ -340,6 +472,81 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
+  },
+  completionCard: {
+    backgroundColor: "#171024",
+    borderColor: "#231A33",
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+  },
+  completionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  completionTitle: {
+    color: "#E7D9FF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  completionPercent: {
+    color: "#B56CFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  progressTrack: {
+    height: 8,
+    backgroundColor: "#0E0A14",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#B56CFF",
+    borderRadius: 999,
+  },
+  completionText: {
+    color: "#CBB8F1",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  completionList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  completionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0E0A14",
+    borderColor: "#3A2B52",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 6,
+  },
+  completionDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#5B3A87",
+  },
+  completionDotDone: {
+    backgroundColor: "#66D19E",
+  },
+  completionItemText: {
+    color: "#A590C9",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  completionItemDone: {
+    color: "#D7F5DE",
+    fontSize: 12,
+    fontWeight: "800",
   },
   secondaryButton: {
     backgroundColor: "#171024",

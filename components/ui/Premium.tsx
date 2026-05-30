@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { theme } from "./theme";
 
@@ -50,6 +50,72 @@ export function EmptyState({ title, text }: { title: string; text?: string }) {
     <View style={styles.empty}>
       <Text style={styles.emptyTitle}>{title}</Text>
       {text ? <Text style={styles.emptyText}>{text}</Text> : null}
+    </View>
+  );
+}
+
+type FeedbackTone = "success" | "error" | "warning" | "info";
+
+function getFeedbackStyles(type: FeedbackTone) {
+  switch (type) {
+    case "success":
+      return {
+        box: styles.successFeedback,
+        title: styles.successFeedbackTitle,
+        text: styles.successFeedbackText,
+      };
+    case "error":
+      return {
+        box: styles.errorFeedback,
+        title: styles.errorFeedbackTitle,
+        text: styles.errorFeedbackText,
+      };
+    case "warning":
+      return {
+        box: styles.warningFeedback,
+        title: styles.warningFeedbackTitle,
+        text: styles.warningFeedbackText,
+      };
+    default:
+      return {
+        box: styles.infoFeedback,
+        title: styles.infoFeedbackTitle,
+        text: styles.infoFeedbackText,
+      };
+  }
+}
+
+export function FeedbackNotice({
+  type = "info",
+  title,
+  text,
+}: {
+  type?: FeedbackTone;
+  title?: string;
+  text: string;
+}) {
+  const feedback = getFeedbackStyles(type);
+  return (
+    <View style={[styles.feedback, feedback.box]}>
+      {title ? <Text style={[styles.feedbackTitle, feedback.title]}>{title}</Text> : null}
+      <Text style={[styles.feedbackText, feedback.text]}>{text}</Text>
+    </View>
+  );
+}
+
+export function LoadingState({
+  text,
+  fullScreen = false,
+  compact = false,
+}: {
+  text: string;
+  fullScreen?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <View style={[styles.loading, fullScreen && styles.loadingFullScreen, compact && styles.loadingCompact]}>
+      <ActivityIndicator size={compact ? "small" : "large"} color={theme.colors.accent} />
+      <Text style={styles.loadingText}>{text}</Text>
     </View>
   );
 }
@@ -150,6 +216,10 @@ const styles = StyleSheet.create({
   empty: {
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
+    borderWidth: 1,
+    borderRadius: theme.radius.lg,
     padding: theme.spacing.xl,
     gap: theme.spacing.xs,
   },
@@ -163,6 +233,88 @@ const styles = StyleSheet.create({
     color: theme.colors.muted,
     fontSize: 14,
     lineHeight: 20,
+    textAlign: "center",
+  },
+  feedback: {
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    gap: 4,
+  },
+  feedbackTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  feedbackText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  successFeedback: {
+    backgroundColor: theme.colors.successBg,
+    borderColor: theme.colors.success,
+  },
+  successFeedbackTitle: {
+    color: "#D7F5DE",
+  },
+  successFeedbackText: {
+    color: "#D7F5DE",
+  },
+  errorFeedback: {
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
+  },
+  errorFeedbackTitle: {
+    color: "#FFD8DE",
+  },
+  errorFeedbackText: {
+    color: "#FFD8DE",
+  },
+  warningFeedback: {
+    backgroundColor: theme.colors.warningBg,
+    borderColor: theme.colors.warning,
+  },
+  warningFeedbackTitle: {
+    color: "#FFE0B8",
+  },
+  warningFeedbackText: {
+    color: "#FFE0B8",
+  },
+  infoFeedback: {
+    backgroundColor: theme.colors.infoBg,
+    borderColor: theme.colors.info,
+  },
+  infoFeedbackTitle: {
+    color: "#D6E3FF",
+  },
+  infoFeedbackText: {
+    color: "#D6E3FF",
+  },
+  loading: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.xl,
+    gap: theme.spacing.sm,
+  },
+  loadingFullScreen: {
+    flex: 1,
+    backgroundColor: theme.colors.bg,
+    borderWidth: 0,
+    borderRadius: 0,
+  },
+  loadingCompact: {
+    padding: theme.spacing.lg,
+  },
+  loadingText: {
+    color: theme.colors.muted,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
     textAlign: "center",
   },
   metric: {

@@ -4,7 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { getConversation, getConversationLifecycle, getMessages, sendMessage } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation, Message } from "../../../lib/types";
-import { SignInRequired } from "../../../components/ui/Premium";
+import { FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
 
 export default function ConversationScreen() {
   const router = useRouter();
@@ -144,12 +144,7 @@ export default function ConversationScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#B56CFF" />
-        <Text style={styles.loadingText}>Loading conversation…</Text>
-      </View>
-    );
+    return <LoadingState text="Loading conversation..." fullScreen />;
   }
 
   if (requiresSignIn) {
@@ -186,27 +181,26 @@ export default function ConversationScreen() {
       </View>
 
       {isReadOnly ? (
-        <View style={styles.cancelledBanner}>
-          <Text style={styles.cancelledText}>
-            {isCompleted
+        <FeedbackNotice
+          type="warning"
+          text={
+            isCompleted
               ? "This job is completed. This conversation is kept for your records."
               : isCancelled
                 ? "This job was cancelled. Any new arrangement requires a new agreement."
                 : isArchived
                   ? "This conversation has been archived and is read-only."
-                  : conversationLifecycle.reason}
-          </Text>
-        </View>
+                  : conversationLifecycle.reason
+          }
+        />
       ) : (
-        <View style={styles.safetyBanner}>
-          <Text style={styles.safetyText}>Keep arrangements clear. FEN does not process MVP payments.</Text>
-        </View>
+        <FeedbackNotice type="info" text="Keep arrangements clear. FEN does not process payments in this MVP." />
       )}
 
       <View style={styles.guidancePanel}>
         <Text style={styles.guidanceTitle}>Use messages to agree the details</Text>
         <Text style={styles.guidanceBullet}>• Confirm the exact task, time, place, and any tools needed.</Text>
-        <Text style={styles.guidanceBullet}>• Keep payment arrangements clear before the job starts.</Text>
+        <Text style={styles.guidanceBullet}>• Agree any payment directly before the job starts.</Text>
         <Text style={styles.guidanceBullet}>• Do not share sensitive personal or financial details.</Text>
         <Text style={styles.guidanceBullet}>• If a job is cancelled or completed, start a new agreement before doing anything else.</Text>
       </View>
@@ -232,14 +226,16 @@ export default function ConversationScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
-              {isReadOnly ? "No messages were sent before this job closed." : "No messages yet. Start the conversation!"}
+              {isReadOnly
+                ? "This FEN chat closed before any messages were sent."
+                : "Start with the task, time, place, and anything the other person should know."}
             </Text>
           </View>
         }
       />
 
       <View style={styles.inputRow}>
-        {sendError ? <Text style={styles.sendError}>{sendError}</Text> : null}
+        {sendError ? <FeedbackNotice type={sendError.startsWith("Message sent") ? "warning" : "error"} text={sendError} /> : null}
         <View style={styles.composerRow}>
           <TextInput
             style={styles.input}

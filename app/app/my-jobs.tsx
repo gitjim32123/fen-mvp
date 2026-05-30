@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { cancelJob, clearOldPostedJobs, completeJob, getMyPostedJobs, leaveAcceptedJob, removeJob } from "../../lib/jobs";
 import { getApplicationCountsForJobs, getMyApplications, withdrawApplication } from "../../lib/applications";
@@ -7,7 +7,7 @@ import { createOrOpenConversation } from "../../lib/messaging";
 import { supabase } from "../../lib/supabase";
 import type { Job, Application } from "../../lib/types";
 import StatusChip from "../../components/jobs/StatusChip";
-import { SignInRequired } from "../../components/ui/Premium";
+import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../components/ui/Premium";
 import { confirmAction } from "../../lib/confirmAction";
 
 function toStatusLabel(status: Job["status"] | Application["status"]) {
@@ -229,6 +229,7 @@ export default function MyJobsScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setActionMessage(null);
       loadJobs(active, false);
       return () => { active = false; };
     }, [loadJobs])
@@ -431,12 +432,7 @@ export default function MyJobsScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#B56CFF" />
-        <Text style={styles.loadingText}>Loading your jobs…</Text>
-      </View>
-    );
+    return <LoadingState text="Loading jobs..." fullScreen />;
   }
 
   if (!currentUserId) {
@@ -451,20 +447,17 @@ export default function MyJobsScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>My Jobs</Text>
       <Text style={styles.subtitle}>Track posted jobs and jobs you have applied for with clear status labels.</Text>
+      <FeedbackNotice type="info" text="This is your FEN activity: posted jobs, applications, selected work, and history." />
       <Pressable style={styles.clearButton} onPress={handleClearOldJobs} disabled={clearingOld}>
         <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old posted jobs"}</Text>
       </Pressable>
 
       {errorText ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{errorText}</Text>
-        </View>
+        <FeedbackNotice type="error" text={errorText} />
       ) : null}
 
       {actionMessage ? (
-        <View style={actionMessage.type === "success" ? styles.successBox : styles.errorBox}>
-          <Text style={actionMessage.type === "success" ? styles.successText : styles.errorText}>{actionMessage.text}</Text>
-        </View>
+        <FeedbackNotice type={actionMessage.type} text={actionMessage.text} />
       ) : null}
 
       {hasNeedsAttention ? (
@@ -500,7 +493,10 @@ export default function MyJobsScreen() {
       <Text style={styles.sectionTitle}>Posted by me</Text>
       <View style={styles.group}>
         {activePostedJobs.length === 0 ? (
-          <Text style={styles.emptyText}>No posted jobs yet.</Text>
+          <EmptyState
+            title="You haven't posted any jobs yet"
+            text="Need help with something? Create a FEN job and people nearby can apply."
+          />
         ) : (
           activePostedJobs.map((job) => (
             <JobRow
@@ -525,7 +521,10 @@ export default function MyJobsScreen() {
       <Text style={styles.sectionTitle}>Applied for</Text>
       <View style={styles.group}>
         {appliedActiveJobs.length === 0 ? (
-          <Text style={styles.emptyText}>No applications yet.</Text>
+          <EmptyState
+            title="You haven't applied for a job yet"
+            text="Browse local FEN jobs and apply when a task is a good fit."
+          />
         ) : (
           appliedActiveJobs.map((app) => {
             const job = (app as any).job;
@@ -548,7 +547,10 @@ export default function MyJobsScreen() {
       <Text style={styles.sectionTitle}>Selected / active</Text>
       <View style={styles.group}>
         {selectedActiveJobs.length === 0 ? (
-          <Text style={styles.emptyText}>No selected jobs yet.</Text>
+          <EmptyState
+            title="No active FEN work yet"
+            text="Selected jobs appear here after a poster chooses you."
+          />
         ) : (
           selectedActiveJobs.map((app) => {
             const job = (app as any).job;
@@ -573,7 +575,10 @@ export default function MyJobsScreen() {
       <Text style={styles.sectionTitle}>Completed / cancelled / inactive</Text>
       <View style={styles.group}>
         {oldPostedJobs.length === 0 && oldAppliedJobs.length === 0 ? (
-          <Text style={styles.emptyText}>No completed, cancelled, or inactive jobs.</Text>
+          <EmptyState
+            title="No job history yet"
+            text="Completed, cancelled, and inactive FEN jobs will appear here."
+          />
         ) : (
           <>
             {oldPostedJobs.map((job) => (

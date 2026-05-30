@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { archiveInactiveConversations, filterActiveConversations, getConversationLifecycle, getConversations } from "../../../lib/messaging";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation } from "../../../lib/types";
-import { SignInRequired } from "../../../components/ui/Premium";
+import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
 import { confirmAction } from "../../../lib/confirmAction";
 
 function ConversationCard({
@@ -84,6 +84,7 @@ export default function MessagesScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setActionMessage(null);
       loadConversations(active, false);
       return () => { active = false; };
     }, [loadConversations])
@@ -130,12 +131,7 @@ export default function MessagesScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#B56CFF" />
-        <Text style={styles.loadingText}>Loading messages...</Text>
-      </View>
-    );
+    return <LoadingState text="Loading messages..." fullScreen />;
   }
 
   if (!currentUserId) {
@@ -150,26 +146,24 @@ export default function MessagesScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Messages</Text>
       <Text style={styles.subtitle}>Each conversation is tied to one job and stays text-only in MVP.</Text>
+      <FeedbackNotice type="info" text="FEN chats help posters and helpers agree details after applying or selecting." />
       <Pressable style={styles.clearButton} onPress={handleClearOldChats} disabled={clearingOld}>
         <Text style={styles.clearButtonText}>{clearingOld ? "Clearing..." : "Clear old inactive chats"}</Text>
       </Pressable>
 
       {errorText ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{errorText}</Text>
-        </View>
+        <FeedbackNotice type="error" text={errorText} />
       ) : null}
 
       {actionMessage ? (
-        <View style={actionMessage.type === "success" ? styles.successBox : styles.errorBox}>
-          <Text style={actionMessage.type === "success" ? styles.successText : styles.errorText}>{actionMessage.text}</Text>
-        </View>
+        <FeedbackNotice type={actionMessage.type} text={actionMessage.text} />
       ) : null}
 
       {filterActiveConversations(conversations, currentUserId).length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyText}>No active conversations yet. Apply for a job or select a worker to start messaging.</Text>
-        </View>
+        <EmptyState
+          title="No conversations yet"
+          text="When you apply for a job or select a worker, your FEN chats will appear here."
+        />
       ) : (
         filterActiveConversations(conversations, currentUserId).map((conv) => (
           <ConversationCard key={conv.id} conversation={conv} currentUserId={currentUserId} />

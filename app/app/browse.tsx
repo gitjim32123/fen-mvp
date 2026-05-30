@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator, Pressable } from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View, Pressable } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { getJobsNearby } from "../../lib/jobs";
 import type { Job } from "../../lib/types";
@@ -8,7 +8,7 @@ import { estimateMiles, estimateTravelMinutes, geocodePostcode, getCurrentGpsPoi
 import JobCard from "../../components/jobs/JobCard";
 import StatusChip from "../../components/jobs/StatusChip";
 import BrowseMap from "../../components/jobs/BrowseMap";
-import { EmptyState, InfoMetric, PageHeader, TrustBanner } from "../../components/ui/Premium";
+import { EmptyState, FeedbackNotice, InfoMetric, LoadingState, PageHeader, TrustBanner } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, normalizeCategory } from "../../lib/categories";
 
 const DISTANCE_OPTIONS = [2, 5, 10];
@@ -156,6 +156,7 @@ export default function BrowseScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <PageHeader title="Browse nearby jobs" subtitle="Quick local jobs with area-first privacy and simple details." />
+      <FeedbackNotice type="info" text="Open FEN jobs appear here. Use search and filters to narrow what is nearby." />
 
       <View style={styles.metricsRow}>
         <InfoMetric label="Open jobs" value={String(jobs.filter((job) => job.status === "open").length)} />
@@ -234,16 +235,14 @@ export default function BrowseScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#B56CFF" />
-          <Text style={styles.loadingText}>Loading jobs…</Text>
-        </View>
+        <LoadingState text="Loading jobs..." />
       ) : errorText ? (
-        <View style={styles.centered}>
-          <Text style={styles.errorText}>{errorText}</Text>
-        </View>
+        <FeedbackNotice type="error" text={errorText} />
       ) : filtered.length === 0 ? (
-        <EmptyState title="No jobs nearby right now" text="Try a broader search or check back soon." />
+        <EmptyState
+          title="No local jobs yet"
+          text="New FEN jobs will appear here as people nearby post tasks."
+        />
       ) : (
         <View style={styles.list}>
           {filtered.map((job) => (

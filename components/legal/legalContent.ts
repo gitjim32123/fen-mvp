@@ -12,7 +12,7 @@ export const legalPages = {
     title: "Privacy summary",
     sections: [
       "FEN keeps exact address details hidden in the MVP until a helper is chosen.",
-      "We use profile, job, application, and message information to run the marketplace.",
+      "We use profile, job, application, and message information to run the FEN service.",
       "Do not share sensitive personal information in public job descriptions.",
       "You can keep arrangements inside job-specific messages where possible.",
     ],
@@ -32,7 +32,7 @@ export const legalPages = {
       "FEN does not process payments in the MVP.",
       "Any payment amount, timing, and method is arranged directly between users.",
       "FEN is not responsible for payment disputes, missed payments, refunds, or losses.",
-      "Agree the amount before work starts and keep the arrangement simple.",
+      "Agree the amount and method directly before work starts.",
     ],
   },
 };
