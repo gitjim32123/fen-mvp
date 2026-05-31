@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { isValidPostcodeDistrict, normalizePostcodeDistrict } from "./postcodeDistricts";
 import type { Job } from "./types";
 
 export async function getJobs(): Promise<Job[]> {
@@ -51,16 +52,15 @@ export async function postJob(formData: {
   urgency: string;
   tools_supplied?: boolean;
   preferred_start_at?: string;
-  lat?: number | null;
-  lng?: number | null;
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
-  const postcode = formData.postcode.trim().toUpperCase() || "AREA NOT PROVIDED";
-  const postcodeDistrict = postcode.includes("→")
-    ? postcode.split("→")[0].trim().split(" ")[0]
-    : postcode.split(" ")[0];
+  if (!isValidPostcodeDistrict(formData.postcode)) {
+    throw new Error("Add the first part of the job postcode, for example DN11 or S80.");
+  }
+  const postcodeDistrict = normalizePostcodeDistrict(formData.postcode);
+  const postcode = postcodeDistrict;
 
   const { data, error } = await supabase
     .from("jobs")
@@ -69,13 +69,11 @@ export async function postJob(formData: {
       description: formData.description,
       budget_gbp: formData.budget_gbp,
       postcode,
-      postcode_district: postcodeDistrict || postcode,
+      postcode_district: postcodeDistrict,
       category: formData.category,
       urgency: formData.urgency,
       tools_supplied: formData.tools_supplied,
       preferred_start_at: formData.preferred_start_at,
-      lat: formData.lat ?? null,
-      lng: formData.lng ?? null,
       poster_id: user.id,
     }])
     .select()
@@ -99,7 +97,7 @@ export async function updateJobDetails(
   if (!user) throw new Error("Not signed in");
 
   const postcode = updates.postcode?.trim().toUpperCase() || "AREA NOT PROVIDED";
-  const postcodeDistrict = postcode === "AREA NOT PROVIDED" ? "AREA" : postcode.split(" ")[0] || postcode;
+  const postcodeDistrict = normalizePostcodeDistrict(postcode) || "LOCAL";
 
   const { data, error } = await supabase
     .from("jobs")

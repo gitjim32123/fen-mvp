@@ -11,6 +11,7 @@ import { estimateMiles, estimateTravelMinutes, geocodePostcode, roundToFive } fr
 import { confirmAction } from "../../lib/confirmAction";
 import { FeedbackNotice, LoadingState, SignInRequired } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, type JobCategory } from "../../lib/categories";
+import { isValidPostcodeDistrict, normalizePostcodeDistrict } from "../../lib/postcodeDistricts";
 
 type Urgency = "Need now" | "Today" | "Flexible";
 
@@ -385,9 +386,7 @@ export default function PostScreen() {
       setPosting(true);
       setPostError(null);
       setPostSuccess(null);
-      const postcodeValue = showPostcodes
-        ? `${fromPostcode.trim().toUpperCase()} → ${toPostcode.trim().toUpperCase()}`
-        : locationPostcode.trim().toUpperCase();
+      const postcodeValue = normalizePostcodeDistrict(locationPostcode);
       if (selectedImages.length > 0) {
         console.log("FEN MVP: photos selected but not submitted because photo uploads are preview-only.");
       }
@@ -403,8 +402,6 @@ export default function PostScreen() {
   }
 
   async function doPost(postcodeValue: string) {
-    const primaryPostcode = showPostcodes ? fromPostcode.trim() : locationPostcode.trim();
-    const jobPoint = primaryPostcode ? await geocodePostcode(primaryPostcode).catch(() => null) : null;
     const job = await postJob({
       title: title.trim(),
       description: description.trim(),
@@ -414,8 +411,6 @@ export default function PostScreen() {
       urgency,
       tools_supplied: toolsSupplied,
       preferred_start_at: getValidPreferredStartAt(preferredTime),
-      lat: jobPoint?.latitude,
-      lng: jobPoint?.longitude,
     });
     setPostedJobId(job.id);
     setPostSuccess("Job posted. Opening the job now...");
@@ -433,6 +428,16 @@ export default function PostScreen() {
     if (!title.trim() || !description.trim() || !budget.trim()) {
       setPostError("Fill in title, description, and budget.");
       Alert.alert("Missing details", "Fill in title, description, and budget.");
+      return;
+    }
+    if (!locationPostcode.trim()) {
+      setPostError("Add the first part of the job postcode, for example DN11 or S80.");
+      Alert.alert("Job area required", "Add the first part of the job postcode, for example DN11 or S80.");
+      return;
+    }
+    if (!isValidPostcodeDistrict(locationPostcode)) {
+      setPostError("Enter a valid postcode area, for example DN11, S80, or LS1.");
+      Alert.alert("Check job area", "Enter a valid postcode area, for example DN11, S80, or LS1.");
       return;
     }
     const parsedBudget = Number(budget);
@@ -512,7 +517,7 @@ export default function PostScreen() {
     await submitJob();
   }
 
-  const canPost = title.trim() && description.trim() && budget.trim() && !moderationBlock && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting && !postedJobId;
+  const canPost = title.trim() && description.trim() && budget.trim() && isValidPostcodeDistrict(locationPostcode) && !moderationBlock && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting && !postedJobId;
 
   if (!authChecked) {
     return <LoadingState text="Checking sign in..." fullScreen />;
@@ -589,6 +594,16 @@ export default function PostScreen() {
 
       <TextInput placeholder="Budget in GBP" placeholderTextColor="#8D79AF" style={[styles.input, aiSuggested && styles.aiFilled]} keyboardType="numeric" value={budget} onChangeText={(text: string) => { setBudget(text); setAiSuggested(false); }} />
 
+      <TextInput
+        placeholder="Where is the job? First part of postcode only"
+        placeholderTextColor="#8D79AF"
+        style={styles.input}
+        autoCapitalize="characters"
+        value={locationPostcode}
+        onChangeText={(text: string) => setLocationPostcode(text.toUpperCase())}
+      />
+      <Text style={styles.postcodeHint}>Use only the outward code, such as DN11, S80, or LS1. Exact addresses stay out of the public listing.</Text>
+
       {showPostcodes ? (
         <>
           <TextInput placeholder="From postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={fromPostcode} onChangeText={setFromPostcode} />
@@ -604,19 +619,7 @@ export default function PostScreen() {
             <Text style={styles.postcodeHint}>Enter both postcodes to see an estimated price</Text>
           )}
         </>
-      ) : (
-        <>
-          <TextInput
-            placeholder="Area or postcode (optional)"
-            placeholderTextColor="#8D79AF"
-            style={styles.input}
-            autoCapitalize="characters"
-            value={locationPostcode}
-            onChangeText={setLocationPostcode}
-          />
-          <Text style={styles.postcodeHint}>General jobs can be posted without a postcode, but adding an area improves travel estimates.</Text>
-        </>
-      )}
+      ) : null}
 
       <View style={styles.row}>
         <View style={styles.flex}>

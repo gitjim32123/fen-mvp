@@ -10,6 +10,7 @@ import StatusChip from "../../components/jobs/StatusChip";
 import BrowseMap from "../../components/jobs/BrowseMap";
 import { EmptyState, FeedbackNotice, InfoMetric, LoadingState, PageHeader, TrustBanner } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, normalizeCategory } from "../../lib/categories";
+import { normalizePostcodeDistrict } from "../../lib/postcodeDistricts";
 
 const DISTANCE_OPTIONS = [2, 5, 10];
 
@@ -33,7 +34,7 @@ function statusFromJob(job: Job): string {
 }
 
 function areaFromJob(job: Job): string {
-  return (job as any).postcode_district || job.postcode || "Unknown";
+  return normalizePostcodeDistrict((job as any).postcode_district) || normalizePostcodeDistrict(job.postcode) || "Local";
 }
 
 function normalizeFilterValue(value?: string | null): string {

@@ -14,7 +14,10 @@ export async function geocodePostcode(postcode: string): Promise<PostcodePoint |
   if (!clean || clean.toUpperCase() === "N/A") return null;
 
   try {
-    const response = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(clean)}`);
+    const compact = clean.replace(/\s+/g, "").toUpperCase();
+    const isOutcode = /^[A-Z]{1,2}\d[A-Z\d]?$/.test(compact);
+    const path = isOutcode ? "outcodes" : "postcodes";
+    const response = await fetch(`https://api.postcodes.io/${path}/${encodeURIComponent(clean)}`);
     if (!response.ok) return null;
     const json = await response.json();
     const result = json?.result;

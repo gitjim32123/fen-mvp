@@ -1,14 +1,16 @@
-import { useEffect, useRef } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 import { normalizeCategory } from "../../lib/categories";
+import { getDistrictPosition, normalizePostcodeDistrict } from "../../lib/postcodeDistricts";
 import type { Job } from "../../lib/types";
 import { theme } from "../ui/theme";
 
-type Pin = {
+type DistrictGroup = {
+  district: string;
+  jobs: Job[];
   x: number;
   y: number;
-  id: string;
-  job: Job;
+  known: boolean;
 };
 
 type Props = {
@@ -17,14 +19,8 @@ type Props = {
   onJobPress?: (jobId: string) => void;
 };
 
-function hashStr(s: string) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
-function areaFromJob(job: Job) {
-  return (job as any).postcode_district || job.postcode || "Area";
+function districtFromJob(job: Job) {
+  return normalizePostcodeDistrict((job as any).postcode_district) || normalizePostcodeDistrict(job.postcode) || "Local";
 }
 
 function budgetFromJob(job: Job) {
@@ -46,65 +42,47 @@ function shortCategoryFromJob(job: Job) {
   return "";
 }
 
-function pinsFromJobs(jobs: Job[]): Pin[] {
-  const positions = [
-    { x: 47, y: 20 },
-    { x: 64, y: 47 },
-    { x: 30, y: 58 },
-  ];
+function groupJobsByDistrict(jobs: Job[]): DistrictGroup[] {
+  const grouped = new Map<string, Job[]>();
+  for (const job of jobs) {
+    if (!job?.id) continue;
+    const district = districtFromJob(job);
+    grouped.set(district, [...(grouped.get(district) || []), job]);
+  }
 
-  return jobs.filter((job) => job?.id).slice(0, 3).map((job, index) => {
-    const fallback = hashStr(job.id + areaFromJob(job));
-    const position = positions[index] ?? { x: 20 + (fallback % 58), y: 24 + ((fallback >> 8) % 42) };
-    return {
-      ...position,
-      id: job.id,
-      job,
-    };
-  });
+  return Array.from(grouped.entries())
+    .map(([district, groupJobs]) => {
+      const position = getDistrictPosition(district);
+      return {
+        district,
+        jobs: groupJobs,
+        ...position,
+      };
+    })
+    .sort((left, right) => right.jobs.length - left.jobs.length || left.district.localeCompare(right.district))
+    .slice(0, 8);
+}
+
+function markerSummary(group: DistrictGroup) {
+  if (group.jobs.length > 1) return `${group.jobs.length} jobs`;
+  return budgetFromJob(group.jobs[0]);
 }
 
 export default function BrowseMapBase({ jobs, selectedId, onJobPress }: Props) {
-  const pulse = useRef(new Animated.Value(0)).current;
-  const pins = pinsFromJobs(jobs);
-  const areas = Array.from(new Set(jobs.map(areaFromJob).filter(Boolean))).slice(0, 2);
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 2600,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
-
-  const pulseStyle = {
-    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0] }),
-    transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1.16] }) }],
-  };
+  const groups = groupJobsByDistrict(jobs);
+  const areas = groups.map((group) => group.district).slice(0, 4);
 
   return (
     <View style={styles.container}>
       <View style={styles.summary}>
         <View style={styles.summaryTitleRow}>
-          <Text style={styles.kicker}>Nearby activity</Text>
+          <Text style={styles.kicker}>Approximate local map</Text>
           <Text style={styles.summaryCount}>
             {jobs.length} {jobs.length === 1 ? "open job" : "open jobs"}
           </Text>
         </View>
         <View style={styles.summaryMetaRow}>
-          <Text style={styles.helper}>Approximate area view</Text>
+          <Text style={styles.helper}>Postcode districts only</Text>
           {areas.length > 0 && (
             <Text style={styles.areas} numberOfLines={1}>
               {areas.join(" · ")}
@@ -114,37 +92,74 @@ export default function BrowseMapBase({ jobs, selectedId, onJobPress }: Props) {
       </View>
 
       <View style={styles.mapArea}>
-        <View style={styles.backGlow} />
-        <Animated.View style={[styles.pulseRing, pulseStyle]} />
-        <View style={styles.ringOuter} />
-        <View style={styles.ringMiddle} />
-        <View style={styles.ringInner} />
-        <View style={styles.crosshairHorizontal} />
-        <View style={styles.crosshairVertical} />
-        <View style={styles.centerNode} />
+        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={styles.mapSvg}>
+          <Rect x="0" y="0" width="100" height="100" rx="6" fill="#100B18" />
+          <Path
+            d="M13 18 C22 9 39 10 50 15 C64 20 78 17 88 29 C97 40 88 55 91 71 C80 83 63 88 47 84 C31 81 18 85 9 73 C2 62 12 48 9 35 C8 28 9 23 13 18 Z"
+            fill="#171024"
+            stroke="rgba(181, 108, 255, 0.28)"
+            strokeWidth="0.7"
+          />
+          <Path
+            d="M19 70 C31 61 38 61 48 54 C58 47 65 38 80 32"
+            stroke="rgba(92, 207, 255, 0.2)"
+            strokeWidth="1.4"
+            fill="none"
+          />
+          <Polyline
+            points="15,45 28,43 38,48 52,45 67,51 84,49"
+            stroke="rgba(231, 217, 255, 0.14)"
+            strokeWidth="0.65"
+            fill="none"
+          />
+          <Polyline
+            points="27,18 31,30 29,42 33,56 30,72"
+            stroke="rgba(231, 217, 255, 0.11)"
+            strokeWidth="0.55"
+            fill="none"
+          />
+          <Polyline
+            points="61,18 56,31 60,45 55,60 58,78"
+            stroke="rgba(231, 217, 255, 0.11)"
+            strokeWidth="0.55"
+            fill="none"
+          />
+          <Line x1="8" y1="28" x2="91" y2="28" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
+          <Line x1="8" y1="72" x2="91" y2="72" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
+          <Line x1="22" y1="10" x2="22" y2="88" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
+          <Line x1="78" y1="12" x2="78" y2="86" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
+          <Circle cx="49" cy="45" r="2.8" fill="rgba(231, 217, 255, 0.12)" stroke="rgba(181, 108, 255, 0.22)" strokeWidth="0.4" />
+        </Svg>
 
-        {pins.map((pin) => {
-          const isSelected = pin.id === selectedId;
+        {groups.map((group) => {
+          const topJob = group.jobs[0];
+          const isSelected = group.jobs.some((job) => job.id === selectedId);
+          const alignRight = group.x > 58;
+          const category = shortCategoryFromJob(topJob);
           return (
             <Pressable
-              key={pin.id}
-              onPress={() => onJobPress?.(pin.id)}
-              style={[styles.marker, { left: `${pin.x}%`, top: `${pin.y}%` }]}
+              key={group.district}
+              onPress={() => onJobPress?.(topJob.id)}
+              style={[
+                styles.marker,
+                alignRight && styles.markerRight,
+                { left: `${group.x}%`, top: `${group.y}%` },
+              ]}
             >
-              <View style={[styles.markerDotWrap, isSelected && styles.markerDotWrapSelected]}>
+              <View style={[styles.markerDotWrap, isSelected && styles.markerDotWrapSelected, !group.known && styles.markerDotWrapFallback]}>
                 <View style={styles.markerDot} />
               </View>
               <View style={[styles.markerCard, isSelected && styles.markerCardSelected]}>
                 <Text style={styles.markerArea} numberOfLines={1}>
-                  {areaFromJob(pin.job)}
+                  {group.district} area
                 </Text>
                 <View style={styles.markerLine}>
                   <Text style={styles.markerBudget} numberOfLines={1}>
-                    {budgetFromJob(pin.job)}
+                    {markerSummary(group)}
                   </Text>
-                  {!!shortCategoryFromJob(pin.job) && (
+                  {!!category && (
                     <Text style={styles.markerMeta} numberOfLines={1}>
-                      {shortCategoryFromJob(pin.job)}
+                      {category}
                     </Text>
                   )}
                 </View>
@@ -153,10 +168,10 @@ export default function BrowseMapBase({ jobs, selectedId, onJobPress }: Props) {
           );
         })}
 
-        {pins.length === 0 && (
+        {groups.length === 0 && (
           <View style={styles.emptyOverlay}>
-            <Text style={styles.emptyTitle}>No local activity here yet</Text>
-            <Text style={styles.emptyText}>Open jobs will appear as area markers.</Text>
+            <Text style={styles.emptyTitle}>No local jobs yet</Text>
+            <Text style={styles.emptyText}>New jobs will appear here by approximate area.</Text>
           </View>
         )}
       </View>
@@ -164,7 +179,7 @@ export default function BrowseMapBase({ jobs, selectedId, onJobPress }: Props) {
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={styles.legendDot} />
-          <Text style={styles.legendText}>Area marker</Text>
+          <Text style={styles.legendText}>District marker</Text>
         </View>
         <Text style={styles.legendNote}>Exact address hidden</Text>
       </View>
@@ -201,77 +216,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   mapArea: {
-    minHeight: 252,
+    minHeight: 272,
     position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
     backgroundColor: "#100B18",
     overflow: "hidden",
-    padding: theme.spacing.md,
   },
-  backGlow: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: "rgba(181, 108, 255, 0.08)",
-  },
-  pulseRing: {
-    position: "absolute",
-    width: 242,
-    height: 242,
-    borderRadius: 121,
-    borderWidth: 1,
-    borderColor: "rgba(181, 108, 255, 0.32)",
-    backgroundColor: "rgba(181, 108, 255, 0.05)",
-  },
-  ringOuter: {
-    position: "absolute",
-    width: 228,
-    height: 228,
-    borderRadius: 114,
-    borderWidth: 1,
-    borderColor: "rgba(181, 108, 255, 0.18)",
-  },
-  ringMiddle: {
-    position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    borderWidth: 1,
-    borderColor: "rgba(203, 184, 241, 0.14)",
-  },
-  ringInner: {
-    position: "absolute",
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 1,
-    borderColor: "rgba(181, 108, 255, 0.28)",
-  },
-  crosshairHorizontal: {
-    position: "absolute",
-    left: "16%",
-    right: "16%",
-    top: "50%",
-    height: 1,
-    backgroundColor: "rgba(203, 184, 241, 0.08)",
-  },
-  crosshairVertical: {
-    position: "absolute",
-    top: "15%",
-    bottom: "15%",
-    left: "50%",
-    width: 1,
-    backgroundColor: "rgba(203, 184, 241, 0.08)",
-  },
-  centerNode: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#F0E2FF",
-    borderWidth: 2,
-    borderColor: "#B56CFF",
+  mapSvg: {
+    ...StyleSheet.absoluteFillObject,
   },
   kicker: {
     color: theme.colors.accent,
@@ -294,28 +245,36 @@ const styles = StyleSheet.create({
     color: "#E7D9FF",
     fontSize: 9,
     fontWeight: "800",
-    maxWidth: 170,
+    maxWidth: 190,
   },
   marker: {
     position: "absolute",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    maxWidth: 116,
+    maxWidth: 132,
+    transform: [{ translateX: -8 }, { translateY: -8 }],
+  },
+  markerRight: {
+    flexDirection: "row-reverse",
+    transform: [{ translateX: -116 }, { translateY: -8 }],
   },
   markerDotWrap: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 17,
+    height: 17,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(181, 108, 255, 0.16)",
-    borderColor: "rgba(181, 108, 255, 0.24)",
+    backgroundColor: "rgba(181, 108, 255, 0.18)",
+    borderColor: "rgba(181, 108, 255, 0.42)",
     borderWidth: 1,
   },
   markerDotWrapSelected: {
     backgroundColor: "rgba(240, 226, 255, 0.2)",
     borderColor: "#F0E2FF",
+  },
+  markerDotWrapFallback: {
+    borderStyle: "dashed",
   },
   markerDot: {
     width: 7,
@@ -326,17 +285,17 @@ const styles = StyleSheet.create({
     borderColor: "#F0E2FF",
   },
   markerCard: {
-    minWidth: 78,
-    maxWidth: 92,
-    backgroundColor: "rgba(28, 19, 42, 0.9)",
-    borderColor: "rgba(231, 217, 255, 0.12)",
+    minWidth: 88,
+    maxWidth: 108,
+    backgroundColor: "rgba(28, 19, 42, 0.92)",
+    borderColor: "rgba(231, 217, 255, 0.14)",
     borderWidth: 1,
     borderRadius: 11,
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
   markerCardSelected: {
-    borderColor: "rgba(181, 108, 255, 0.65)",
+    borderColor: "rgba(181, 108, 255, 0.7)",
   },
   markerArea: {
     color: theme.colors.text,
@@ -361,7 +320,9 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   emptyOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
+    justifyContent: "center",
     gap: 4,
     paddingHorizontal: 22,
   },
