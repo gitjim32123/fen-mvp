@@ -56,7 +56,8 @@ const DISTRICT_POSITIONS: Record<string, { x: number; y: number }> = {
   S81: { x: 42, y: 82 },
 };
 
-const GENERIC_AREA_VALUES = new Set(["AREA", "AREA NOT PROVIDED", "LOCAL", "UNKNOWN"]);
+const GENERIC_AREA_VALUES = new Set(["AREA", "AREA NOT PROVIDED", "LOCAL", "UNKNOWN", "N/A", "NA"]);
+const OUTWARD_CODE_PATTERN = /^[A-Z]{1,2}\d[A-Z\d]?$/;
 
 function hashDistrict(value: string) {
   let hash = 0;
@@ -76,11 +77,25 @@ export function normalizePostcodeDistrict(value?: string | null): string {
   const normalized = firstArea.split(/\s+/)[0]?.replace(/[^A-Z0-9]/g, "") || "";
   const fullPostcodeMatch = normalized.match(/^([A-Z]{1,2}\d[A-Z\d]?)(\d[A-Z]{2})$/);
   if (fullPostcodeMatch) return fullPostcodeMatch[1];
-  return GENERIC_AREA_VALUES.has(normalized) ? "" : normalized;
+  if (GENERIC_AREA_VALUES.has(normalized)) return "";
+  return OUTWARD_CODE_PATTERN.test(normalized) ? normalized : "";
 }
 
 export function isValidPostcodeDistrict(value?: string | null): boolean {
-  return /^[A-Z]{1,2}\d[A-Z\d]?$/.test(normalizePostcodeDistrict(value));
+  return OUTWARD_CODE_PATTERN.test(normalizePostcodeDistrict(value));
+}
+
+export function getSafePostcodeDistrict(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    const normalized = normalizePostcodeDistrict(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+export function formatPostcodeAreaLabel(...values: Array<string | null | undefined>): string {
+  const district = getSafePostcodeDistrict(...values);
+  return district ? `${district} area` : "Local area";
 }
 
 export function getDistrictPosition(district: string): DistrictPosition {

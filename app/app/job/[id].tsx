@@ -38,6 +38,7 @@ import type { Application, Job } from "../../../lib/types";
 import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
 import { normalizeCategory } from "../../../lib/categories";
 import { confirmAction } from "../../../lib/confirmAction";
+import { formatPostcodeAreaLabel, isValidPostcodeDistrict, normalizePostcodeDistrict } from "../../../lib/postcodeDistricts";
 
 function toStatusLabel(status?: string) {
   switch (status) {
@@ -238,7 +239,7 @@ export default function JobDetailScreen() {
       setEditDescription(data.description || "");
       setEditBudget(String(data.budget_gbp ?? ""));
       setEditCategory(data.category || "");
-      setEditPostcode(data.postcode || "");
+      setEditPostcode(normalizePostcodeDistrict((data as any).postcode_district) || normalizePostcodeDistrict(data.postcode) || "");
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!active) return;
@@ -264,12 +265,12 @@ export default function JobDetailScreen() {
       if (loadedUserId && !sameId(loadedUserId, loadedPosterId)) {
         const profile = await getProfile().catch(() => null);
         const profilePostcode = profile?.postcode?.trim();
-        const jobPostcode = (data.postcode || "").split("→")[0]?.trim();
-        if (jobPostcode && jobPostcode !== "N/A" && jobPostcode !== "AREA NOT PROVIDED") {
+        const safeJobPostcode = normalizePostcodeDistrict((data as any).postcode_district) || normalizePostcodeDistrict(data.postcode);
+        if (safeJobPostcode) {
           const [gpsPoint, profilePoint, toPoint] = await Promise.all([
             getCurrentGpsPoint(),
             profilePostcode ? geocodePostcode(profilePostcode) : Promise.resolve(null),
-            geocodePostcode(jobPostcode),
+            geocodePostcode(safeJobPostcode),
           ]).catch(() => [null, null, null]);
           const fromPoint = gpsPoint || profilePoint;
           if (active && fromPoint && toPoint) {
@@ -317,7 +318,7 @@ export default function JobDetailScreen() {
     };
   }, [loadJobState]);
 
-  const areaText = (job as any)?.postcode_district || job?.postcode || "Area not available";
+  const areaText = formatPostcodeAreaLabel((job as any)?.postcode_district, job?.postcode);
   const activeApplications = applications.filter((application) => application.status === "applied");
   const currentUserKey = normalizeId(currentUserId);
   const posterId = normalizeId(job?.poster_id);
@@ -550,7 +551,7 @@ export default function JobDetailScreen() {
     setEditDescription(job.description || "");
     setEditBudget(String(job.budget_gbp ?? ""));
     setEditCategory(job.category || "");
-    setEditPostcode(job.postcode || "");
+    setEditPostcode(normalizePostcodeDistrict((job as any).postcode_district) || normalizePostcodeDistrict(job.postcode) || "");
     setShowEditJob(true);
   }
 
@@ -569,6 +570,11 @@ export default function JobDetailScreen() {
       Alert.alert("Invalid budget", "Enter a valid budget in GBP.");
       return;
     }
+    if (!isValidPostcodeDistrict(editPostcode)) {
+      Alert.alert("Check job area", "Enter the first part of the job postcode, for example DN11, S80, or LS1.");
+      return;
+    }
+    const safePostcode = normalizePostcodeDistrict(editPostcode);
 
     try {
           setSavingJob(true);
@@ -577,7 +583,7 @@ export default function JobDetailScreen() {
         description: editDescription,
         budget_gbp: parsedBudget,
         category: editCategory,
-        postcode: editPostcode,
+        postcode: safePostcode,
       });
       setJob(data);
       await loadJobState(true, false);
@@ -1262,13 +1268,14 @@ export default function JobDetailScreen() {
               />
               <TextInput
                 style={styles.modalInputSingle}
-                placeholder="Postcode"
+                placeholder="Where is the job? First part only"
                 placeholderTextColor="#8D79AF"
                 value={editPostcode}
                 onChangeText={setEditPostcode}
                 autoCapitalize="characters"
                 editable={!savingJob}
               />
+              <Text style={styles.modalHint}>Use only the outward code, such as DN11, S80, or LS1. Exact addresses stay out of the public listing.</Text>
 
               <View style={styles.modalActions}>
                 <Pressable
@@ -1605,6 +1612,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: "#E7D9FF",
     fontSize: 15,
+  },
+  modalHint: {
+    color: "#A590C9",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: -4,
   },
   applicationInput: {
     backgroundColor: "#0E0A14",

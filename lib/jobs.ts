@@ -96,8 +96,11 @@ export async function updateJobDetails(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
-  const postcode = updates.postcode?.trim().toUpperCase() || "AREA NOT PROVIDED";
-  const postcodeDistrict = normalizePostcodeDistrict(postcode) || "LOCAL";
+  if (!isValidPostcodeDistrict(updates.postcode)) {
+    throw new Error("Add the first part of the job postcode, for example DN11 or S80.");
+  }
+  const postcodeDistrict = normalizePostcodeDistrict(updates.postcode);
+  const postcode = postcodeDistrict;
 
   const { data, error } = await supabase
     .from("jobs")
