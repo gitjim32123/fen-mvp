@@ -4,7 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import { getJobsNearby } from "../../lib/jobs";
 import type { Job } from "../../lib/types";
 import { getProfile } from "../../lib/auth";
-import { estimateMiles, estimateTravelMinutes, geocodePostcode, getCurrentGpsPoint, getTravelEstimateUnavailableText } from "../../lib/geocoding";
+import { estimateMiles, estimateTravelMinutes, geocodePostcode, getTravelEstimateUnavailableText } from "../../lib/geocoding";
 import JobCard from "../../components/jobs/JobCard";
 import StatusChip from "../../components/jobs/StatusChip";
 import BrowseMap from "../../components/jobs/BrowseMap";
@@ -72,8 +72,7 @@ export default function BrowseScreen() {
         const transportMode = profile?.transport_mode || "unspecified";
 
         const profilePostcode = profile?.postcode?.trim();
-        const fromPoint = await getCurrentGpsPoint()
-          || (profilePostcode ? await geocodePostcode(profilePostcode) : null);
+        const fromPoint = profilePostcode ? await geocodePostcode(profilePostcode) : null;
         if (!fromPoint || !active) return;
 
         const estimates: Record<string, { distance: string; time: string; miles: number }> = {};

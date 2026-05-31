@@ -30,7 +30,7 @@ import {
   withdrawApplication,
 } from "../../../lib/applications";
 import { getProfile } from "../../../lib/auth";
-import { estimateMiles, estimateTravelMinutes, geocodePostcode, getCurrentGpsPoint, getTravelEstimateUnavailableText } from "../../../lib/geocoding";
+import { estimateMiles, estimateTravelMinutes, geocodePostcode, getTravelEstimateUnavailableText } from "../../../lib/geocoding";
 import { createOrOpenConversation } from "../../../lib/messaging";
 import { hasReported, submitReport } from "../../../lib/reports";
 import { supabase } from "../../../lib/supabase";
@@ -267,12 +267,11 @@ export default function JobDetailScreen() {
         const profilePostcode = profile?.postcode?.trim();
         const safeJobPostcode = normalizePostcodeDistrict((data as any).postcode_district) || normalizePostcodeDistrict(data.postcode);
         if (safeJobPostcode) {
-          const [gpsPoint, profilePoint, toPoint] = await Promise.all([
-            getCurrentGpsPoint(),
+          const [profilePoint, toPoint] = await Promise.all([
             profilePostcode ? geocodePostcode(profilePostcode) : Promise.resolve(null),
             geocodePostcode(safeJobPostcode),
           ]).catch(() => [null, null, null]);
-          const fromPoint = gpsPoint || profilePoint;
+          const fromPoint = profilePoint;
           if (active && fromPoint && toPoint) {
             const miles = estimateMiles(fromPoint, toPoint);
             const minutes = estimateTravelMinutes(miles, profile?.transport_mode || "unspecified");
