@@ -7,7 +7,7 @@ import { postJob } from "../../lib/jobs";
 import { supabase } from "../../lib/supabase";
 import { checkJobSafety, scoreBusinessAdRisk } from "../../lib/moderation";
 import { checkRepeatPosting } from "../../lib/spam";
-import { estimateMiles, estimateTravelMinutes, geocodePostcode, roundToFive } from "../../lib/geocoding";
+import { estimateMiles, formatDistanceRange, formatTravelTimeRange, geocodePostcodeArea, roundToFive } from "../../lib/geocoding";
 import { confirmAction } from "../../lib/confirmAction";
 import { FeedbackNotice, LoadingState, SignInRequired } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, type JobCategory } from "../../lib/categories";
@@ -176,7 +176,7 @@ export default function PostScreen() {
   const [categoryOverridden, setCategoryOverridden] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [travelEstimate, setTravelEstimate] = useState<{ miles: number; suggestedBudget: number; minutes: number } | null>(null);
+  const [travelEstimate, setTravelEstimate] = useState<{ miles: number; suggestedBudget: number } | null>(null);
   const [travelEstimateStatus, setTravelEstimateStatus] = useState<string | null>(null);
 
   const showPostcodes = needsTravelPostcodes(detectedCategory, title, description);
@@ -285,31 +285,29 @@ export default function PostScreen() {
       try {
         setTravelEstimateStatus("Checking travel estimate...");
         const [fromPoint, toPoint] = await Promise.all([
-          geocodePostcode(fromPostcode),
-          geocodePostcode(toPostcode),
+          geocodePostcodeArea(fromPostcode),
+          geocodePostcodeArea(toPostcode),
         ]);
         if (!active) return;
         if (!fromPoint || !toPoint) {
           setTravelEstimate(null);
-          setTravelEstimateStatus("Travel estimate unavailable until both postcodes are valid.");
+          setTravelEstimateStatus("Travel estimate unavailable until both postcode areas are valid.");
           return;
         }
         const miles = estimateMiles(fromPoint, toPoint);
-        const minutes = estimateTravelMinutes(miles);
         const detected = detectCategory(title);
         const baseBudget = Number.isFinite(Number(budget)) && Number(budget) > 0
           ? Number(budget)
           : detected?.budget ?? 20;
         setTravelEstimate({
           miles,
-          minutes,
           suggestedBudget: suggestBudget(detectedCategory, title, baseBudget, miles),
         });
         setTravelEstimateStatus(null);
       } catch {
         if (!active) return;
         setTravelEstimate(null);
-        setTravelEstimateStatus("Travel estimate unavailable until both locations are known.");
+        setTravelEstimateStatus("Travel estimate unavailable until both postcode areas are known.");
       }
     }, 500);
 
@@ -320,7 +318,11 @@ export default function PostScreen() {
   }, [showPostcodes, fromPostcode, toPostcode, budget, title, detectedCategory]);
 
   const movingEstimate = travelEstimate
-    ? { estimate: `~£${travelEstimate.suggestedBudget}`, miles: travelEstimate.miles, minutes: travelEstimate.minutes }
+    ? {
+        estimate: `~£${travelEstimate.suggestedBudget}`,
+        distance: formatDistanceRange(travelEstimate.miles),
+        time: formatTravelTimeRange(travelEstimate.miles),
+      }
     : null;
 
   async function handleAiSuggest() {
@@ -453,8 +455,13 @@ export default function PostScreen() {
     }
     if (showPostcodes) {
       if (!fromPostcode.trim() || !toPostcode.trim()) {
-        setPostError("Moving jobs need a from and to postcode so workers can estimate distance.");
-        Alert.alert("Postcodes required", "Moving jobs need a from and to postcode so workers can estimate distance.");
+        setPostError("Moving jobs need from and to postcode areas so workers can estimate distance.");
+        Alert.alert("Postcode areas required", "Moving jobs need from and to postcode areas so workers can estimate distance.");
+        return;
+      }
+      if (!isValidPostcodeDistrict(fromPostcode) || !isValidPostcodeDistrict(toPostcode)) {
+        setPostError("Use the first part of each postcode, for example DN11 or S80.");
+        Alert.alert("Check postcode areas", "Use the first part of each postcode, for example DN11 or S80.");
         return;
       }
     }
@@ -517,7 +524,7 @@ export default function PostScreen() {
     await submitJob();
   }
 
-  const canPost = title.trim() && description.trim() && budget.trim() && isValidPostcodeDistrict(locationPostcode) && !moderationBlock && (!showPostcodes || (fromPostcode.trim() && toPostcode.trim())) && !posting && !postedJobId;
+  const canPost = title.trim() && description.trim() && budget.trim() && isValidPostcodeDistrict(locationPostcode) && !moderationBlock && (!showPostcodes || (isValidPostcodeDistrict(fromPostcode) && isValidPostcodeDistrict(toPostcode))) && !posting && !postedJobId;
 
   if (!authChecked) {
     return <LoadingState text="Checking sign in..." fullScreen />;
@@ -606,17 +613,17 @@ export default function PostScreen() {
 
       {showPostcodes ? (
         <>
-          <TextInput placeholder="From postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={fromPostcode} onChangeText={setFromPostcode} />
-          <TextInput placeholder="To postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={toPostcode} onChangeText={setToPostcode} />
+          <TextInput placeholder="From postcode area" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={fromPostcode} onChangeText={setFromPostcode} />
+          <TextInput placeholder="To postcode area" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={toPostcode} onChangeText={setToPostcode} />
           {movingEstimate ? (
             <View style={styles.estimateCard}>
               <Ionicons name="navigate" size={14} color="#B56CFF" />
-              <Text style={styles.estimateText}>Suggested offer: {movingEstimate.estimate} · approx travel distance {movingEstimate.miles.toFixed(1)} miles · about {movingEstimate.minutes} min</Text>
+              <Text style={styles.estimateText}>Suggested offer: {movingEstimate.estimate} · {movingEstimate.distance} · {movingEstimate.time}. Based on postcode areas, not an exact route.</Text>
             </View>
           ) : travelEstimateStatus ? (
             <Text style={styles.postcodeHint}>{travelEstimateStatus}</Text>
           ) : (
-            <Text style={styles.postcodeHint}>Enter both postcodes to see an estimated price</Text>
+            <Text style={styles.postcodeHint}>Enter both postcode areas to see an estimated price. Exact addresses can be agreed in messages.</Text>
           )}
         </>
       ) : null}

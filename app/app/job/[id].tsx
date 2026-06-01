@@ -15,6 +15,7 @@ import {
   cancelJob,
   completeJob,
   confirmJobStartTime,
+  type CommitmentSnapshotInput,
   getJob,
   leaveAcceptedJob,
   proposeJobStartTime,
@@ -30,10 +31,20 @@ import {
   withdrawApplication,
 } from "../../../lib/applications";
 import { getProfile } from "../../../lib/auth";
-import { estimateMiles, estimateTravelMinutes, geocodePostcode, getTravelEstimateUnavailableText } from "../../../lib/geocoding";
+import {
+  calculateCommitmentWindowStart,
+  COMMITMENT_ESTIMATE_VERSION,
+  estimateMiles,
+  formatDistanceRange,
+  formatTravelTimeRange,
+  geocodePostcodeArea,
+  getTravelMinutesRange,
+  getTravelEstimateUnavailableText,
+} from "../../../lib/geocoding";
 import { createOrOpenConversation } from "../../../lib/messaging";
 import { hasReported, submitReport } from "../../../lib/reports";
 import { supabase } from "../../../lib/supabase";
+import { getProfileTravelArea } from "../../../lib/profiles";
 import type { Application, Job } from "../../../lib/types";
 import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
 import { normalizeCategory } from "../../../lib/categories";
@@ -135,15 +146,6 @@ function buildStartTime(offset: number, time: string) {
   return date.toISOString();
 }
 
-function formatCancellationCutoff(startTime?: string, travelMinutes?: number) {
-  if (!startTime) return null;
-  const start = new Date(startTime);
-  if (Number.isNaN(start.getTime())) return null;
-  const buffer = (travelMinutes || 0) + 15;
-  const cutoff = new Date(start.getTime() - buffer * 60 * 1000);
-  return formatStartTime(cutoff.toISOString());
-}
-
 function normalizeId(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -152,6 +154,33 @@ function sameId(left: unknown, right: unknown) {
   const leftId = normalizeId(left);
   const rightId = normalizeId(right);
   return !!leftId && !!rightId && leftId === rightId;
+}
+
+function hasCompleteCommitmentSnapshot(job: Job) {
+  const windowStart = job.commitment_window_starts_at ? new Date(job.commitment_window_starts_at) : null;
+  const travelMax = job.commitment_travel_minutes_max;
+  return (
+    !!windowStart &&
+    !Number.isNaN(windowStart.getTime()) &&
+    typeof travelMax === "number" &&
+    Number.isFinite(travelMax) &&
+    travelMax > 0 &&
+    !!normalizePostcodeDistrict(job.commitment_worker_outcode) &&
+    !!normalizePostcodeDistrict(job.commitment_job_outcode) &&
+    !!String(job.commitment_transport_mode || "").trim() &&
+    !!String(job.commitment_estimate_version || "").trim()
+  );
+}
+
+function hasPartialCommitmentSnapshot(job: Job) {
+  return !!(
+    job.commitment_window_starts_at ||
+    job.commitment_travel_minutes_max != null ||
+    job.commitment_worker_outcode ||
+    job.commitment_job_outcode ||
+    job.commitment_transport_mode ||
+    job.commitment_estimate_version
+  );
 }
 
 export default function JobDetailScreen() {
@@ -194,7 +223,13 @@ export default function JobDetailScreen() {
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [feedbackJobId, setFeedbackJobId] = useState<string | null>(null);
   const [travelEstimateText, setTravelEstimateText] = useState<string>(getTravelEstimateUnavailableText());
-  const [travelMinutes, setTravelMinutes] = useState<number | undefined>(undefined);
+  const [commitmentWindow, setCommitmentWindow] = useState<{
+    startsAt: Date | null;
+    note: string;
+  }>({
+    startsAt: null,
+    note: "Travel estimate unavailable, using a default commitment window.",
+  });
   const [openingConversation, setOpeningConversation] = useState(false);
   const [reportingJob, setReportingJob] = useState(false);
 
@@ -228,7 +263,10 @@ export default function JobDetailScreen() {
       if (clearFeedback) resetFeedback();
       setErrorText(null);
       setTravelEstimateText(getTravelEstimateUnavailableText());
-      setTravelMinutes(undefined);
+      setCommitmentWindow({
+        startsAt: null,
+        note: "Travel estimate unavailable, using a default commitment window.",
+      });
 
       const data = await getJob(jobId);
       if (!active) return;
@@ -262,21 +300,61 @@ export default function JobDetailScreen() {
         setApplications([]);
       }
 
+      const agreedStartTime = data.agreed_start_at || null;
+      const acceptedWorkerId = normalizeId(data.accepted_worker_id);
+      const safeJobPostcode = normalizePostcodeDistrict((data as any).postcode_district) || normalizePostcodeDistrict(data.postcode);
+      if (agreedStartTime && hasCompleteCommitmentSnapshot(data)) {
+        const storedWindowStart = new Date(data.commitment_window_starts_at as string);
+        setCommitmentWindow({
+          startsAt: storedWindowStart,
+          note: "Based on the selected helper's approximate travel from their profile area when the time was confirmed. No live location or exact address is used.",
+        });
+      } else if (agreedStartTime && acceptedWorkerId && safeJobPostcode) {
+        if (hasPartialCommitmentSnapshot(data)) {
+          console.warn("Incomplete commitment snapshot found; using legacy fallback estimate.");
+        }
+        try {
+          const workerProfile = await getProfileTravelArea(acceptedWorkerId);
+          const [workerPoint, jobPoint] = await Promise.all([
+            workerProfile.postcode ? geocodePostcodeArea(workerProfile.postcode) : Promise.resolve(null),
+            geocodePostcodeArea(safeJobPostcode),
+          ]);
+          if (!active) return;
+          if (workerPoint && jobPoint) {
+            const miles = estimateMiles(workerPoint, jobPoint);
+            const range = getTravelMinutesRange(miles, workerProfile.transport_mode);
+            setCommitmentWindow({
+              startsAt: calculateCommitmentWindowStart(agreedStartTime, range.maximum),
+              note: "Based on the selected helper's approximate travel from their profile area. No live location or exact address is used.",
+            });
+          } else {
+            setCommitmentWindow({
+              startsAt: calculateCommitmentWindowStart(agreedStartTime),
+              note: "Travel estimate unavailable, using a default commitment window.",
+            });
+          }
+        } catch {
+          if (!active) return;
+          setCommitmentWindow({
+            startsAt: calculateCommitmentWindowStart(agreedStartTime),
+            note: "Travel estimate unavailable, using a default commitment window.",
+          });
+        }
+      }
+
       if (loadedUserId && !sameId(loadedUserId, loadedPosterId)) {
         const profile = await getProfile().catch(() => null);
         const profilePostcode = profile?.postcode?.trim();
-        const safeJobPostcode = normalizePostcodeDistrict((data as any).postcode_district) || normalizePostcodeDistrict(data.postcode);
         if (safeJobPostcode) {
           const [profilePoint, toPoint] = await Promise.all([
-            profilePostcode ? geocodePostcode(profilePostcode) : Promise.resolve(null),
-            geocodePostcode(safeJobPostcode),
+            profilePostcode ? geocodePostcodeArea(profilePostcode) : Promise.resolve(null),
+            geocodePostcodeArea(safeJobPostcode),
           ]).catch(() => [null, null, null]);
           const fromPoint = profilePoint;
           if (active && fromPoint && toPoint) {
             const miles = estimateMiles(fromPoint, toPoint);
-            const minutes = estimateTravelMinutes(miles, profile?.transport_mode || "unspecified");
-            setTravelMinutes(minutes);
-            setTravelEstimateText(`Approx travel distance ${miles.toFixed(1)} miles, about ${minutes} min by ${profile?.transport_mode || "your transport mode"}.`);
+            const mode = profile?.transport_mode || "unspecified";
+            setTravelEstimateText(`${formatDistanceRange(miles)} from your profile area. ${formatTravelTimeRange(miles, mode)}. Based on postcode areas, not an exact route.`);
           }
         }
       }
@@ -358,7 +436,10 @@ export default function JobDetailScreen() {
       : job?.status === "in_progress"
         ? "This job has started."
         : getStatusHelp((job as any)?.status);
-  const cancellationCutoff = formatCancellationCutoff(job?.preferred_start_at || job?.agreed_start_at, travelMinutes);
+  const agreedStartTime = job?.agreed_start_at || null;
+  const commitmentWindowText = agreedStartTime && commitmentWindow.startsAt
+    ? `Commitment window starts around ${formatStartTime(commitmentWindow.startsAt.toISOString())}`
+    : null;
   const startTimeActionLabel = canChangeStartTimeProposal ? "Change proposed time" : "Propose start time";
 
   async function handleApply() {
@@ -717,6 +798,41 @@ export default function JobDetailScreen() {
     }
   }
 
+  async function buildCommitmentSnapshot(): Promise<CommitmentSnapshotInput> {
+    const proposedStartTime = job?.preferred_start_at || startTime;
+    const jobOutcode = normalizePostcodeDistrict((job as any)?.postcode_district) || normalizePostcodeDistrict(job?.postcode);
+    const profile = await getProfile();
+    const workerOutcode = normalizePostcodeDistrict(profile?.postcode);
+
+    if (!proposedStartTime || !jobOutcode || !workerOutcode) {
+      throw new Error("Add a valid profile postcode area before confirming this start time.");
+    }
+
+    const [workerPoint, jobPoint] = await Promise.all([
+      geocodePostcodeArea(workerOutcode),
+      geocodePostcodeArea(jobOutcode),
+    ]);
+    if (!workerPoint || !jobPoint) {
+      throw new Error("Could not calculate the commitment window from the postcode areas. Please check your profile area and try again.");
+    }
+
+    const miles = estimateMiles(workerPoint, jobPoint);
+    const range = getTravelMinutesRange(miles, profile?.transport_mode || "unspecified");
+    const windowStart = calculateCommitmentWindowStart(proposedStartTime, range.maximum);
+    if (!windowStart) {
+      throw new Error("Could not calculate the commitment window for this start time.");
+    }
+
+    return {
+      windowStartsAt: windowStart.toISOString(),
+      travelMinutesMax: range.maximum,
+      workerOutcode,
+      jobOutcode,
+      transportMode: profile?.transport_mode || "unspecified",
+      estimateVersion: COMMITMENT_ESTIMATE_VERSION,
+    };
+  }
+
   async function handleConfirmStartTime() {
     markFeedbackForCurrentJob();
     if (!jobId || !currentUserKey || !canConfirmStartTime) {
@@ -725,7 +841,8 @@ export default function JobDetailScreen() {
     }
     try {
       setUpdatingStartTime(true);
-      await confirmJobStartTime(jobId, currentUserKey);
+      const commitment = await buildCommitmentSnapshot();
+      await confirmJobStartTime(jobId, currentUserKey, commitment);
       await loadJobState(true, false, true);
       setActionMessage({ type: "success", text: "Start time confirmed. Job is now in progress." });
       Alert.alert("Start time confirmed", "This job is now marked as in progress.");
@@ -914,14 +1031,20 @@ export default function JobDetailScreen() {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Start time</Text>
             <Text style={styles.bodyText}>
-              {job.status === "confirm_pending"
+              {agreedStartTime
+                ? `Start time agreed: ${formatStartTime(agreedStartTime)}`
+                : job.status === "confirm_pending"
                 ? `Pending confirmation: ${formatStartTime(job.preferred_start_at || job.agreed_start_at)}`
-                : job.status === "in_progress"
-                  ? `Confirmed: ${formatStartTime(job.agreed_start_at)}`
-                  : `Current plan: ${formatStartTime(job.agreed_start_at || job.preferred_start_at)}`}
+                : `Current plan: ${formatStartTime(job.preferred_start_at)}`}
             </Text>
-            {cancellationCutoff ? (
-              <Text style={styles.cutoffText}>Cancel before: {cancellationCutoff}</Text>
+            {commitmentWindowText ? (
+              <>
+                <Text style={styles.cutoffText}>{commitmentWindowText}</Text>
+                <Text style={styles.noticeText}>{commitmentWindow.note}</Text>
+                <Text style={styles.noticeText}>Helping neighbours help neighbours works best when both sides keep the agreed time.</Text>
+              </>
+            ) : hasSelectedWorker ? (
+              <Text style={styles.noticeText}>The shared commitment window appears after both sides agree the start time.</Text>
             ) : null}
             {isPoster && job.status === "confirm_pending" ? (
               <Text style={styles.noticeText}>Waiting for the selected worker to confirm. You can change the proposed time if needed.</Text>

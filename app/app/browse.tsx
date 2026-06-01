@@ -4,7 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import { getJobsNearby } from "../../lib/jobs";
 import type { Job } from "../../lib/types";
 import { getProfile } from "../../lib/auth";
-import { estimateMiles, estimateTravelMinutes, geocodePostcode, getTravelEstimateUnavailableText } from "../../lib/geocoding";
+import { estimateMiles, formatDistanceRange, formatTravelTimeRange, geocodePostcodeArea, getTravelEstimateUnavailableText } from "../../lib/geocoding";
 import JobCard from "../../components/jobs/JobCard";
 import StatusChip from "../../components/jobs/StatusChip";
 import BrowseMap from "../../components/jobs/BrowseMap";
@@ -72,20 +72,19 @@ export default function BrowseScreen() {
         const transportMode = profile?.transport_mode || "unspecified";
 
         const profilePostcode = profile?.postcode?.trim();
-        const fromPoint = profilePostcode ? await geocodePostcode(profilePostcode) : null;
+        const fromPoint = profilePostcode ? await geocodePostcodeArea(profilePostcode) : null;
         if (!fromPoint || !active) return;
 
         const estimates: Record<string, { distance: string; time: string; miles: number }> = {};
         for (const job of data) {
-          const jobPostcode = (job.postcode || "").split("→")[0]?.trim();
-          if (!jobPostcode || jobPostcode === "N/A" || jobPostcode === "AREA NOT PROVIDED") continue;
-          const toPoint = await geocodePostcode(jobPostcode);
+          const jobPostcode = normalizePostcodeDistrict((job as any).postcode_district) || normalizePostcodeDistrict(job.postcode);
+          if (!jobPostcode) continue;
+          const toPoint = await geocodePostcodeArea(jobPostcode);
           if (!toPoint || !active) continue;
           const miles = estimateMiles(fromPoint, toPoint);
-          const minutes = estimateTravelMinutes(miles, transportMode);
           estimates[job.id] = {
-            distance: `${miles.toFixed(1)} miles approx travel distance`,
-            time: `About ${minutes} min by ${transportMode || "transport"}`,
+            distance: `${formatDistanceRange(miles)} from your profile area`,
+            time: `${formatTravelTimeRange(miles, transportMode)}. Based on postcode areas.`,
             miles,
           };
         }

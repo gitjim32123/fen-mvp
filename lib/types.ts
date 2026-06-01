@@ -36,6 +36,14 @@ export type Job = {
   tools_supplied: boolean;
   cancel_reason?: string;
   deleted_at?: string | null;
+  commitment_window_starts_at?: string | null;
+  commitment_travel_minutes_max?: number | null;
+  commitment_worker_outcode?: string | null;
+  commitment_job_outcode?: string | null;
+  commitment_transport_mode?: TransportMode | string | null;
+  commitment_calculated_at?: string | null;
+  commitment_agreed_at?: string | null;
+  commitment_estimate_version?: string | null;
   lat?: number | null;
   lng?: number | null;
   created_at: string;

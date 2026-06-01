@@ -2,22 +2,37 @@ import { supabase } from "./supabase";
 import { isValidPostcodeDistrict, normalizePostcodeDistrict } from "./postcodeDistricts";
 import type { Job } from "./types";
 
+const BROWSE_JOB_FIELDS =
+  "id,title,budget_gbp,postcode,postcode_district,category,urgency,status,created_at,updated_at" as const;
+
+const JOB_DETAIL_FIELDS =
+  "id,poster_id,title,description,budget_gbp,postcode,postcode_district,category,urgency,preferred_start_at,agreed_start_at,status,accepted_worker_id,tools_supplied,cancel_reason,deleted_at,commitment_window_starts_at,commitment_travel_minutes_max,commitment_worker_outcode,commitment_job_outcode,commitment_transport_mode,commitment_calculated_at,commitment_agreed_at,commitment_estimate_version,created_at,updated_at" as const;
+
+export type CommitmentSnapshotInput = {
+  windowStartsAt: string;
+  travelMinutesMax: number;
+  workerOutcode: string;
+  jobOutcode: string;
+  transportMode: string;
+  estimateVersion: string;
+};
+
 export async function getJobs(): Promise<Job[]> {
   const { data, error } = await supabase
     .from("jobs")
-    .select("*")
+    .select(BROWSE_JOB_FIELDS)
     .is("deleted_at", null)
     .eq("status", "open")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as Job[];
 }
 
 export async function getJobsNearby(postcode?: string): Promise<Job[]> {
   let query = supabase
     .from("jobs")
-    .select("*")
+    .select(BROWSE_JOB_FIELDS)
     .is("deleted_at", null)
     .eq("status", "open")
     .order("created_at", { ascending: false });
@@ -29,13 +44,13 @@ export async function getJobsNearby(postcode?: string): Promise<Job[]> {
   const { data, error } = await query;
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as Job[];
 }
 
 export async function getJob(id: string): Promise<Job> {
   const { data, error } = await supabase
     .from("jobs")
-    .select("*")
+    .select(JOB_DETAIL_FIELDS)
     .eq("id", id)
     .single();
 
@@ -76,7 +91,7 @@ export async function postJob(formData: {
       preferred_start_at: formData.preferred_start_at,
       poster_id: user.id,
     }])
-    .select()
+    .select(JOB_DETAIL_FIELDS)
     .single();
 
   if (error) throw error;
@@ -115,7 +130,7 @@ export async function updateJobDetails(
     .eq("id", id)
     .eq("poster_id", user.id)
     .eq("status", "open")
-    .select()
+    .select(JOB_DETAIL_FIELDS)
     .single();
 
   if (error) throw error;
@@ -138,7 +153,7 @@ export async function cancelJob(id: string, reason: string) {
     .eq("id", id)
     .eq("poster_id", user.id)
     .in("status", ["open", "held", "confirm_pending", "in_progress"])
-    .select("*")
+    .select(JOB_DETAIL_FIELDS)
     .maybeSingle();
 
   if (error) throw error;
@@ -156,7 +171,7 @@ export async function removeJob(id: string) {
     .eq("id", id)
     .eq("poster_id", user.id)
     .in("status", ["open", "cancelled", "completed"])
-    .select("*")
+    .select(JOB_DETAIL_FIELDS)
     .maybeSingle();
 
   if (error) throw error;
@@ -174,7 +189,7 @@ export async function reopenJob(id: string) {
     .eq("id", id)
     .eq("poster_id", user.id)
     .eq("status", "cancelled")
-    .select("*")
+    .select(JOB_DETAIL_FIELDS)
     .maybeSingle();
 
   if (error) throw error;
@@ -208,7 +223,7 @@ export async function leaveAcceptedJob(id: string, workerId: string) {
 
   const { data, error: reloadError } = await supabase
     .from("jobs")
-    .select("*")
+    .select(JOB_DETAIL_FIELDS)
     .eq("id", id)
     .maybeSingle();
 
@@ -235,7 +250,7 @@ export async function proposeJobStartTime(id: string, startTime: string) {
   return data;
 }
 
-export async function confirmJobStartTime(id: string, workerId: string) {
+export async function confirmJobStartTime(id: string, workerId: string, commitment?: CommitmentSnapshotInput) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || user.id !== workerId) throw new Error("Not signed in as the selected worker.");
 
@@ -250,7 +265,17 @@ export async function confirmJobStartTime(id: string, workerId: string) {
     throw new Error("This start time cannot be confirmed from the current job state.");
   }
 
-  const { data, error: rpcError } = await supabase.rpc("confirm_job_start_time", { p_job_id: id });
+  const { data, error: rpcError } = commitment
+    ? await supabase.rpc("confirm_job_start_time_with_commitment", {
+        p_job_id: id,
+        p_commitment_window_starts_at: commitment.windowStartsAt,
+        p_commitment_travel_minutes_max: commitment.travelMinutesMax,
+        p_commitment_worker_outcode: commitment.workerOutcode,
+        p_commitment_job_outcode: commitment.jobOutcode,
+        p_commitment_transport_mode: commitment.transportMode,
+        p_commitment_estimate_version: commitment.estimateVersion,
+      })
+    : await supabase.rpc("confirm_job_start_time", { p_job_id: id });
   if (rpcError) throw rpcError;
   const confirmed = Array.isArray(data) ? data[0] : data;
   if (!confirmed || confirmed.status !== "in_progress") {
@@ -284,7 +309,7 @@ export async function completeJob(id: string) {
     .eq("id", id)
     .eq("poster_id", user.id)
     .eq("status", "in_progress")
-    .select("*")
+    .select(JOB_DETAIL_FIELDS)
     .maybeSingle();
 
   if (error) throw error;
@@ -298,13 +323,13 @@ export async function getMyPostedJobs(): Promise<Job[]> {
 
   const { data, error } = await supabase
     .from("jobs")
-    .select("*")
+    .select(JOB_DETAIL_FIELDS)
     .eq("poster_id", user.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as Job[];
 }
 
 export async function clearOldPostedJobs() {

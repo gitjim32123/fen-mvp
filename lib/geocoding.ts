@@ -1,9 +1,14 @@
 import type { TransportMode } from "./types";
+import { normalizePostcodeDistrict } from "./postcodeDistricts";
 
 export type PostcodePoint = {
   latitude: number;
   longitude: number;
 };
+
+export const DEFAULT_COMMITMENT_BUFFER_MINUTES = 45;
+export const COMMITMENT_GRACE_MINUTES = 15;
+export const COMMITMENT_ESTIMATE_VERSION = "fen-outcode-v1";
 
 export function roundToFive(value: number) {
   return Math.max(5, Math.round(value / 5) * 5);
@@ -26,6 +31,11 @@ export async function geocodePostcode(postcode: string): Promise<PostcodePoint |
   } catch {
     return null;
   }
+}
+
+export async function geocodePostcodeArea(postcode: string): Promise<PostcodePoint | null> {
+  const district = normalizePostcodeDistrict(postcode);
+  return district ? geocodePostcode(district) : null;
 }
 
 export async function getCurrentGpsPoint(): Promise<PostcodePoint | null> {
@@ -73,6 +83,59 @@ export function estimateTravelMinutes(miles: number, mode: TransportMode = "unsp
   return Math.max(10, Math.ceil((miles / mph) * 60 / 5) * 5);
 }
 
+export function formatTransportMode(mode: TransportMode = "unspecified") {
+  switch (mode) {
+    case "walk":
+      return "walking";
+    case "cycle":
+      return "bike";
+    case "drive":
+      return "car";
+    case "public_transport":
+      return "public transport";
+    default:
+      return "local travel";
+  }
+}
+
+export function getDistanceRange(miles: number) {
+  const safeMiles = Math.max(0, miles);
+  const minimum = Math.max(1, Math.floor((safeMiles * 0.85) / 1) * 1);
+  const maximum = Math.max(minimum + 1, Math.ceil((safeMiles * 1.2) / 1) * 1);
+  return { minimum, maximum };
+}
+
+export function getTravelMinutesRange(miles: number, mode: TransportMode = "unspecified") {
+  const minutes = estimateTravelMinutes(miles, mode);
+  const minimum = Math.max(10, Math.floor((minutes * 0.8) / 5) * 5);
+  const maximum = Math.max(minimum + 5, Math.ceil((minutes * 1.3) / 5) * 5);
+  return { minimum, maximum };
+}
+
+export function formatDistanceRange(miles: number) {
+  const range = getDistanceRange(miles);
+  return `Approx. ${range.minimum}-${range.maximum} miles`;
+}
+
+export function formatTravelTimeRange(miles: number, mode: TransportMode = "unspecified") {
+  const range = getTravelMinutesRange(miles, mode);
+  return `Approx. ${range.minimum}-${range.maximum} min by ${formatTransportMode(mode)}`;
+}
+
+export function getCommitmentBufferMinutes(travelMinutes?: number | null) {
+  if (typeof travelMinutes !== "number" || !Number.isFinite(travelMinutes) || travelMinutes <= 0) {
+    return DEFAULT_COMMITMENT_BUFFER_MINUTES;
+  }
+  return travelMinutes + COMMITMENT_GRACE_MINUTES;
+}
+
+export function calculateCommitmentWindowStart(startTime?: string | null, travelMinutes?: number | null) {
+  if (!startTime) return null;
+  const start = new Date(startTime);
+  if (Number.isNaN(start.getTime())) return null;
+  return new Date(start.getTime() - getCommitmentBufferMinutes(travelMinutes) * 60 * 1000);
+}
+
 export function getTravelEstimateUnavailableText() {
-  return "Travel estimate unavailable until both locations are known.";
+  return "Travel estimate unavailable until both postcode areas are known.";
 }
