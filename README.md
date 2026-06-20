@@ -23,3 +23,21 @@ Deploy on all platforms with Expo Application Services (EAS).
 
 - [Expo Router: Docs](https://docs.expo.dev/router/introduction/)
 # fen-mvp
+
+## Route quotes
+
+Route quote display is disabled unless explicitly enabled:
+
+```sh
+ENABLE_ROUTE_QUOTES=true
+ROUTE_AI_AGENT_BASE_URL=http://localhost:8000
+```
+
+Expo public env names are also supported:
+
+```sh
+EXPO_PUBLIC_ENABLE_ROUTE_QUOTES=true
+EXPO_PUBLIC_ROUTE_AI_AGENT_BASE_URL=http://localhost:8000
+```
+
+The job detail screen requests only `walk`, `bicycle`, `car`, and `bus` from route-ai-agent. Train and combined public transport modes are intentionally not shown in this MVP surface.

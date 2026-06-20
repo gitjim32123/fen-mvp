@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { signUp } from "../../lib/auth";
 import { TrustBanner } from "../../components/ui/Premium";
+import { useTheme, useThemeMode } from "../../components/ui/ThemeProvider";
+import type { Theme } from "../../components/ui/theme";
 import type { TransportMode } from "../../lib/types";
 
 const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
@@ -14,6 +16,11 @@ const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
 ];
 
 export default function SignUpScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { mode, setThemeMode } = useThemeMode();
+  const darkModeEnabled = mode === "dark";
+
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [postcode, setPostcode] = useState("");
@@ -71,10 +78,22 @@ export default function SignUpScreen() {
         <Text style={styles.title}>Register</Text>
         <Text style={styles.subtitle}>Fast Earn Nearby connects people who need quick local help with people nearby who can help.</Text>
 
-        <TextInput placeholder="Display name" placeholderTextColor="#8D79AF" style={styles.input} value={displayName} onChangeText={setDisplayName} editable={!loading} />
-        <TextInput placeholder="Email" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
-        <TextInput placeholder="Postcode" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={postcode} onChangeText={setPostcode} editable={!loading} />
-        <TextInput placeholder="Password" placeholderTextColor="#8D79AF" style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
+        <View style={styles.appearanceRow}>
+          <Text style={styles.appearanceText}>Dark mode</Text>
+          <Switch
+            value={darkModeEnabled}
+            onValueChange={(enabled: boolean) => {
+              void setThemeMode(enabled ? "dark" : "light");
+            }}
+            thumbColor={theme.colors.accent}
+            trackColor={{ false: theme.colors.borderStrong, true: theme.colors.accent }}
+          />
+        </View>
+
+        <TextInput placeholder="Display name" placeholderTextColor={theme.colors.placeholder} style={styles.input} value={displayName} onChangeText={setDisplayName} editable={!loading} />
+        <TextInput placeholder="Email" placeholderTextColor={theme.colors.placeholder} style={styles.input} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} editable={!loading} />
+        <TextInput placeholder="Postcode" placeholderTextColor={theme.colors.placeholder} style={styles.input} autoCapitalize="characters" value={postcode} onChangeText={setPostcode} editable={!loading} />
+        <TextInput placeholder="Password" placeholderTextColor={theme.colors.placeholder} style={styles.input} secureTextEntry value={password} onChangeText={setPassword} editable={!loading} />
         {passwordTooShort ? (
           <Text style={styles.validationText}>Password must be at least 6 characters.</Text>
         ) : null}
@@ -105,7 +124,7 @@ export default function SignUpScreen() {
           disabled={loading}
         >
           <View style={[styles.checkbox, understandsPlatform && styles.checkboxActive]}>
-            {understandsPlatform ? <Text style={styles.checkboxMark}>✓</Text> : null}
+            {understandsPlatform ? <Text style={styles.checkboxMark}>OK</Text> : null}
           </View>
           <View style={styles.confirmCopy}>
             <Text style={styles.confirmText}>
@@ -128,7 +147,7 @@ export default function SignUpScreen() {
         {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
         <Pressable style={[styles.primaryButton, (loading || passwordTooShort || !understandsPlatform) && styles.disabledButton]} onPress={handleSignUp} disabled={loading || passwordTooShort || !understandsPlatform}>
-          {loading ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Create account</Text>}
+          {loading ? <ActivityIndicator size="small" color={theme.colors.accentText} /> : <Text style={styles.primaryButtonText}>Create account</Text>}
         </Pressable>
 
         <Pressable onPress={() => router.push("/auth/sign-in")}>
@@ -139,225 +158,223 @@ export default function SignUpScreen() {
   );
 }
 
-const colors = {
-  bg: "#0E0A14",
-  card: "#171024",
-  border: "#231A33",
-  text: "#E7D9FF",
-  muted: "#CBB8F1",
-  accent: "#B56CFF",
-  noticeBg: "#20172E",
-  noticeBorder: "#5B3A87",
-};
-
-const styles = StyleSheet.create({
-  keyboard: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  screen: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  container: {
-    flexGrow: 1,
-    padding: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 14,
-    width: "100%",
-    maxWidth: 560,
-    alignSelf: "center",
-  },
-  icon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginBottom: 8,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "800",
-  },
-  subtitle: {
-    alignSelf: "stretch",
-    color: colors.muted,
-    fontSize: 16,
-    lineHeight: 23,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  input: {
-    alignSelf: "stretch",
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 15,
-    color: colors.text,
-    fontSize: 16,
-  },
-  notice: {
-    backgroundColor: colors.noticeBg,
-    borderColor: colors.noticeBorder,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-  },
-  noticeText: {
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  sectionLabel: {
-    alignSelf: "stretch",
-    textAlign: "center",
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  optionRow: {
-    alignSelf: "stretch",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 8,
-  },
-  optionChip: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    maxWidth: "100%",
-  },
-  optionChipActive: {
-    borderColor: colors.accent,
-    backgroundColor: "#2A1E3D",
-  },
-  optionChipText: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  optionChipTextActive: {
-    color: colors.text,
-  },
-  confirmBox: {
-    alignSelf: "stretch",
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-  },
-  confirmBoxActive: {
-    borderColor: colors.accent,
-    backgroundColor: "#20172E",
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.muted,
-    backgroundColor: "#0E0A14",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  checkboxActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accent,
-  },
-  checkboxMark: {
-    color: "#140E1D",
-    fontSize: 15,
-    fontWeight: "900",
-    lineHeight: 18,
-  },
-  confirmCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  confirmText: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: "700",
-  },
-  confirmHint: {
-    color: "#FFB84D",
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "700",
-  },
-  legalRow: {
-    alignSelf: "stretch",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 12,
-  },
-  legalLink: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  validationText: {
-    color: "#FFB0B0",
-    fontSize: 13,
-    alignSelf: "stretch",
-  },
-  successText: {
-    color: "#BFE8C8",
-    fontSize: 14,
-    lineHeight: 20,
-    alignSelf: "stretch",
-  },
-  errorText: {
-    alignSelf: "stretch",
-    color: "#FFD8DE",
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  primaryButton: {
-    alignSelf: "stretch",
-    backgroundColor: colors.accent,
-    borderRadius: 16,
-    paddingVertical: 16,
-    marginTop: 4,
-  },
-  primaryButtonText: {
-    color: "#140E1D",
-    textAlign: "center",
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "800",
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  altText: {
-    color: colors.text,
-    textAlign: "center",
-    fontSize: 15,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-});
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
+    keyboard: {
+      flex: 1,
+      backgroundColor: theme.colors.bg,
+    },
+    screen: {
+      flex: 1,
+      backgroundColor: theme.colors.bg,
+    },
+    container: {
+      flexGrow: 1,
+      padding: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 14,
+      width: "100%",
+      maxWidth: 560,
+      alignSelf: "center",
+    },
+    icon: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      marginBottom: 8,
+    },
+    title: {
+      color: theme.colors.text,
+      fontSize: 28,
+      lineHeight: 34,
+      fontWeight: "800",
+    },
+    subtitle: {
+      alignSelf: "stretch",
+      color: theme.colors.muted,
+      fontSize: 16,
+      lineHeight: 23,
+      marginBottom: 6,
+      textAlign: "center",
+    },
+    appearanceRow: {
+      alignSelf: "stretch",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      marginTop: -4,
+    },
+    appearanceText: {
+      color: theme.colors.muted,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    input: {
+      alignSelf: "stretch",
+      backgroundColor: theme.colors.inputBg,
+      borderColor: theme.colors.border,
+      borderWidth: 1,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 15,
+      color: theme.colors.text,
+      fontSize: 16,
+    },
+    sectionLabel: {
+      alignSelf: "stretch",
+      textAlign: "center",
+      color: theme.colors.text,
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    optionRow: {
+      alignSelf: "stretch",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      gap: 8,
+    },
+    optionChip: {
+      backgroundColor: theme.colors.chipBg,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      maxWidth: "100%",
+    },
+    optionChipActive: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.chipActiveBg,
+    },
+    optionChipText: {
+      color: theme.colors.muted,
+      fontSize: 13,
+      lineHeight: 17,
+      fontWeight: "700",
+      textAlign: "center",
+    },
+    optionChipTextActive: {
+      color: theme.colors.text,
+    },
+    confirmBox: {
+      alignSelf: "stretch",
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.border,
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 12,
+    },
+    confirmBoxActive: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.surfaceAlt,
+    },
+    checkbox: {
+      width: 28,
+      height: 22,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: theme.colors.muted,
+      backgroundColor: theme.colors.bg,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 1,
+    },
+    checkboxActive: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.accent,
+    },
+    checkboxMark: {
+      color: theme.colors.accentText,
+      fontSize: 10,
+      fontWeight: "900",
+      lineHeight: 13,
+    },
+    confirmCopy: {
+      flex: 1,
+      gap: 4,
+    },
+    confirmText: {
+      color: theme.colors.muted,
+      fontSize: 13,
+      lineHeight: 19,
+      fontWeight: "700",
+    },
+    confirmHint: {
+      color: theme.colors.warningText,
+      fontSize: 12,
+      lineHeight: 17,
+      fontWeight: "700",
+    },
+    legalRow: {
+      alignSelf: "stretch",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      gap: 12,
+    },
+    legalLink: {
+      color: theme.colors.accent,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    validationText: {
+      color: theme.colors.dangerText,
+      fontSize: 13,
+      alignSelf: "stretch",
+    },
+    successText: {
+      color: theme.colors.successText,
+      backgroundColor: theme.colors.successBg,
+      borderColor: theme.colors.success,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      lineHeight: 20,
+      alignSelf: "stretch",
+    },
+    errorText: {
+      alignSelf: "stretch",
+      color: theme.colors.dangerText,
+      backgroundColor: theme.colors.dangerBg,
+      borderColor: theme.colors.danger,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    primaryButton: {
+      alignSelf: "stretch",
+      backgroundColor: theme.colors.accent,
+      borderRadius: 16,
+      paddingVertical: 16,
+      marginTop: 4,
+    },
+    primaryButtonText: {
+      color: theme.colors.accentText,
+      textAlign: "center",
+      fontSize: 16,
+      lineHeight: 20,
+      fontWeight: "800",
+    },
+    disabledButton: {
+      opacity: 0.5,
+    },
+    altText: {
+      color: theme.colors.text,
+      textAlign: "center",
+      fontSize: 15,
+      fontWeight: "700",
+      marginTop: 4,
+    },
+  });
+}

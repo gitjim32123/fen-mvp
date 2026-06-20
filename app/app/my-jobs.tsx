@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { cancelJob, clearOldPostedJobs, completeJob, getMyPostedJobs, leaveAcceptedJob, removeJob } from "../../lib/jobs";
@@ -9,6 +9,8 @@ import type { Job, Application } from "../../lib/types";
 import StatusChip from "../../components/jobs/StatusChip";
 import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../components/ui/Premium";
 import { confirmAction } from "../../lib/confirmAction";
+import { useTheme } from "../../components/ui/ThemeProvider";
+import type { Theme } from "../../components/ui/theme";
 
 function toStatusLabel(status: Job["status"] | Application["status"]) {
   switch (status) {
@@ -93,6 +95,9 @@ function JobRow({
   detailLines?: string[];
   historical?: boolean;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const canCancel = isPosted && ["open", "held", "confirm_pending", "in_progress"].includes(rawStatus || "");
   const canRemove = isPosted && ["open", "cancelled", "completed"].includes(rawStatus || "");
   return (
@@ -151,6 +156,9 @@ function JobRow({
 }
 
 export default function MyJobsScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [postedJobs, setPostedJobs] = useState<Job[]>([]);
   const [appliedJobs, setAppliedJobs] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
@@ -619,10 +627,11 @@ export default function MyJobsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     padding: 20,
@@ -633,19 +642,19 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   title: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 28,
     lineHeight: 34,
     fontWeight: "800",
     marginTop: 8,
   },
   subtitle: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 16,
     lineHeight: 23,
   },
   sectionTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 20,
     fontWeight: "800",
     marginTop: 8,
@@ -654,9 +663,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
     borderRadius: 18,
     padding: 16,
     gap: 12,
@@ -670,136 +679,136 @@ const styles = StyleSheet.create({
   cardTitle: {
     flex: 1,
     minWidth: 180,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 17,
     fontWeight: "800",
   },
   cardBudget: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 17,
     fontWeight: "800",
     flexShrink: 0,
   },
   applicantText: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 13,
     fontWeight: "800",
   },
   statusHelp: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     lineHeight: 18,
   },
   detailLine: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     lineHeight: 18,
   },
   actionButton: {
-    backgroundColor: "#2A1E3D",
-    borderColor: "#6E46A3",
+    backgroundColor: theme.colors.accentSoft,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 12,
   },
   actionButtonText: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     textAlign: "center",
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "800",
   },
   cancelButton: {
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 12,
   },
   cancelButtonText: {
-    color: "#FFD8DE",
+    color: theme.colors.dangerText,
     textAlign: "center",
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "800",
   },
   removeButton: {
-    backgroundColor: "#171024",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 12,
   },
   removeButtonText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     textAlign: "center",
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "800",
   },
   clearButton: {
-    backgroundColor: "#171024",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
   clearButtonText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     textAlign: "center",
     fontSize: 14,
     fontWeight: "800",
   },
   centered: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     alignItems: "center",
     justifyContent: "center",
   },
   loadingText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 15,
     marginTop: 12,
   },
   errorBox: {
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
   },
   errorText: {
-    color: "#FFD8DE",
+    color: theme.colors.dangerText,
     fontSize: 14,
     lineHeight: 20,
   },
   successBox: {
-    backgroundColor: "#102619",
-    borderColor: "#2F7A45",
+    backgroundColor: theme.colors.successBg,
+    borderColor: theme.colors.success,
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
   },
   successText: {
-    color: "#C8F7D2",
+    color: theme.colors.successText,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "700",
   },
   attentionBox: {
-    backgroundColor: "#1A1025",
-    borderColor: "#6E46A3",
+    backgroundColor: theme.colors.surfaceAlt,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
     gap: 8,
   },
   attentionTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
     fontWeight: "800",
   },
@@ -808,11 +817,11 @@ const styles = StyleSheet.create({
   },
   attentionLabel: {
     alignSelf: "flex-start",
-    backgroundColor: "#2A1E3D",
-    borderColor: "#6E46A3",
+    backgroundColor: theme.colors.accentSoft,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 999,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 12,
     fontWeight: "800",
     overflow: "hidden",
@@ -820,13 +829,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   attentionText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     lineHeight: 20,
   },
   emptyText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     fontStyle: "italic",
   },
-});
+  });
+}

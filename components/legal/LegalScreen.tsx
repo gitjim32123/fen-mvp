@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Card, PageHeader } from "../ui/Premium";
-import { theme } from "../ui/theme";
+import { useTheme } from "../ui/ThemeProvider";
+import type { Theme } from "../ui/theme";
 
 type Page = {
   title: string;
@@ -9,6 +11,9 @@ type Page = {
 };
 
 export function LegalScreen({ page }: { page: Page }) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Pressable onPress={() => router.back()}>
@@ -27,7 +32,8 @@ export function LegalScreen({ page }: { page: Page }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: theme.colors.bg,
@@ -59,4 +65,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-});
+  });
+}

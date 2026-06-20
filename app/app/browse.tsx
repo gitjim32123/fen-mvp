@@ -11,6 +11,8 @@ import BrowseMap from "../../components/jobs/BrowseMap";
 import { EmptyState, FeedbackNotice, InfoMetric, LoadingState, PageHeader, TrustBanner } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, normalizeCategory } from "../../lib/categories";
 import { normalizePostcodeDistrict } from "../../lib/postcodeDistricts";
+import { useTheme } from "../../components/ui/ThemeProvider";
+import type { Theme } from "../../components/ui/theme";
 
 const DISTANCE_OPTIONS = [2, 5, 10];
 
@@ -51,6 +53,9 @@ function travelTimeFromJob(job: Job): string {
 }
 
 export default function BrowseScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -170,7 +175,7 @@ export default function BrowseScreen() {
 
       <TextInput
         placeholder="Search jobs"
-        placeholderTextColor="#8D79AF"
+        placeholderTextColor={theme.colors.placeholder}
         style={styles.search}
         value={search}
         onChangeText={setSearch}
@@ -264,10 +269,11 @@ export default function BrowseScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     padding: 20,
@@ -278,25 +284,25 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   title: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 30,
     fontWeight: "800",
     marginTop: 8,
   },
   subtitle: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 16,
     lineHeight: 23,
     marginBottom: 2,
   },
   search: {
-    backgroundColor: "#171024",
-    borderColor: "#231A33",
+    backgroundColor: theme.colors.inputBg,
+    borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
     marginTop: 6,
   },
@@ -314,7 +320,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterLabel: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 12,
     fontWeight: "800",
     textTransform: "uppercase",
@@ -325,49 +331,49 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   filterChip: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.chipBg,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     maxWidth: "100%",
   },
   filterChipActive: {
-    borderColor: "#B56CFF",
-    backgroundColor: "#2A1E3D",
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.chipActiveBg,
   },
   selectableChip: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.chipBg,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     maxWidth: "100%",
   },
   selectableChipActive: {
-    borderColor: "#B56CFF",
-    backgroundColor: "#2A1E3D",
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.chipActiveBg,
   },
   selectableChipText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
   },
   selectableChipTextActive: {
-    color: "#F0E2FF",
+    color: theme.colors.text,
     fontWeight: "800",
   },
   filterText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
   },
   filterTextActive: {
-    color: "#F0E2FF",
+    color: theme.colors.text,
     fontWeight: "800",
   },
   list: {
@@ -380,20 +386,21 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   loadingText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 15,
     marginTop: 12,
   },
   errorText: {
-    color: "#FFB0B0",
+    color: theme.colors.dangerText,
     fontSize: 15,
     textAlign: "center",
   },
   emptyText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 15,
     textAlign: "center",
   },
-});
+  });
+}
 
 

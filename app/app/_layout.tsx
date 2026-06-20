@@ -1,19 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Redirect, useFocusEffect } from "expo-router";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { theme } from "../../components/ui/theme";
 import { LoadingState } from "../../components/ui/Premium";
+import { useTheme } from "../../components/ui/ThemeProvider";
 import { supabase } from "../../lib/supabase";
 import { getActivitySummary, type ActivitySummary } from "../../lib/activitySummary";
-
-const tabStyle = {
-  backgroundColor: theme.colors.bgDeep,
-  borderTopColor: theme.colors.border,
-  height: 70,
-  paddingTop: 8,
-  paddingBottom: 8,
-};
 
 const emptySummary: ActivitySummary = {
   myJobsBadge: 0,
@@ -28,6 +20,15 @@ function badgeValue(count: number) {
 }
 
 function AppTabs({ summary }: { summary: ActivitySummary }) {
+  const theme = useTheme();
+  const tabStyle = useMemo(() => ({
+    backgroundColor: theme.colors.bgDeep,
+    borderTopColor: theme.colors.border,
+    height: 70,
+    paddingTop: 8,
+    paddingBottom: 8,
+  }), [theme]);
+
   return (
     <Tabs
       screenOptions={{

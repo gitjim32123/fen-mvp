@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { archiveInactiveConversations, filterActiveConversations, getConversationLifecycle, getConversations } from "../../../lib/messaging";
@@ -6,6 +6,8 @@ import { supabase } from "../../../lib/supabase";
 import type { Conversation } from "../../../lib/types";
 import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
 import { confirmAction } from "../../../lib/confirmAction";
+import { useTheme } from "../../../components/ui/ThemeProvider";
+import type { Theme } from "../../../components/ui/theme";
 
 function ConversationCard({
   conversation,
@@ -14,6 +16,9 @@ function ConversationCard({
   conversation: Conversation & { poster?: { display_name: string }; worker?: { display_name: string } };
   currentUserId: string | null;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   if (!conversation.id) {
     return (
       <View style={[styles.card, styles.cardDisabled]}>
@@ -45,6 +50,9 @@ function ConversationCard({
 }
 
 export default function MessagesScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [conversations, setConversations] = useState<(Conversation & { poster?: { display_name: string }; worker?: { display_name: string } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -173,27 +181,29 @@ export default function MessagesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#0E0A14" },
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.colors.bg },
   content: { padding: 20, paddingBottom: 110, gap: 14 },
-  title: { color: "#E7D9FF", fontSize: 30, fontWeight: "800", marginTop: 8 },
-  subtitle: { color: "#CBB8F1", fontSize: 16, lineHeight: 23, marginBottom: 2 },
-  card: { backgroundColor: "#171024", borderWidth: 1, borderColor: "#231A33", borderRadius: 18, padding: 16, gap: 8 },
+  title: { color: theme.colors.text, fontSize: 30, fontWeight: "800", marginTop: 8 },
+  subtitle: { color: theme.colors.muted, fontSize: 16, lineHeight: 23, marginBottom: 2 },
+  card: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 16, gap: 8 },
   cardDisabled: { opacity: 0.65 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
-  name: { color: "#E7D9FF", fontSize: 17, fontWeight: "800", flex: 1 },
-  role: { color: "#B56CFF", fontSize: 12, fontWeight: "800" },
-  archived: { color: "#CBB8F1", fontSize: 12, fontWeight: "700" },
-  job: { color: "#B56CFF", fontSize: 14, fontWeight: "700" },
-  preview: { color: "#CBB8F1", fontSize: 15, lineHeight: 22 },
-  activity: { color: "#A590C9", fontSize: 12, fontWeight: "700" },
-  clearButton: { backgroundColor: "#171024", borderColor: "#3A2B52", borderWidth: 1, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
-  clearButtonText: { color: "#CBB8F1", textAlign: "center", fontSize: 14, fontWeight: "800" },
+  name: { color: theme.colors.text, fontSize: 17, fontWeight: "800", flex: 1 },
+  role: { color: theme.colors.accent, fontSize: 12, fontWeight: "800" },
+  archived: { color: theme.colors.muted, fontSize: 12, fontWeight: "700" },
+  job: { color: theme.colors.accent, fontSize: 14, fontWeight: "700" },
+  preview: { color: theme.colors.muted, fontSize: 15, lineHeight: 22 },
+  activity: { color: theme.colors.subtle, fontSize: 12, fontWeight: "700" },
+  clearButton: { backgroundColor: theme.colors.surface, borderColor: theme.colors.borderStrong, borderWidth: 1, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
+  clearButtonText: { color: theme.colors.muted, textAlign: "center", fontSize: 14, fontWeight: "800" },
   centered: { alignItems: "center", justifyContent: "center", paddingVertical: 40 },
-  loadingText: { color: "#CBB8F1", fontSize: 15, marginTop: 12 },
-  errorBox: { backgroundColor: "#2B161B", borderColor: "#8E4656", borderWidth: 1, borderRadius: 14, padding: 14 },
-  errorText: { color: "#FFD8DE", fontSize: 14, lineHeight: 20 },
-  successBox: { backgroundColor: "#102619", borderColor: "#2F7A45", borderWidth: 1, borderRadius: 14, padding: 14 },
-  successText: { color: "#C8F7D2", fontSize: 14, lineHeight: 20, fontWeight: "700" },
-  emptyText: { color: "#CBB8F1", fontSize: 15, textAlign: "center", lineHeight: 22 },
-});
+  loadingText: { color: theme.colors.muted, fontSize: 15, marginTop: 12 },
+  errorBox: { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.danger, borderWidth: 1, borderRadius: 14, padding: 14 },
+  errorText: { color: theme.colors.dangerText, fontSize: 14, lineHeight: 20 },
+  successBox: { backgroundColor: theme.colors.successBg, borderColor: theme.colors.success, borderWidth: 1, borderRadius: 14, padding: 14 },
+  successText: { color: theme.colors.successText, fontSize: 14, lineHeight: 20, fontWeight: "700" },
+  emptyText: { color: theme.colors.muted, fontSize: 15, textAlign: "center", lineHeight: 22 },
+  });
+}

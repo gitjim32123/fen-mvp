@@ -1,6 +1,7 @@
-import { ReactNode } from "react";
+import { ReactNode, useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { theme } from "./theme";
+import { useTheme } from "./ThemeProvider";
+import type { Theme } from "./theme";
 
 type Variant = "primary" | "secondary" | "ghost";
 
@@ -13,6 +14,9 @@ type Props = {
 };
 
 export default function AppButton({ title, onPress, variant = "primary", disabled = false, icon }: Props) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <Pressable
       onPress={onPress}
@@ -27,7 +31,8 @@ export default function AppButton({ title, onPress, variant = "primary", disable
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   base: {
     borderRadius: theme.radius.md,
     paddingVertical: 15,
@@ -49,4 +54,5 @@ const styles = StyleSheet.create({
   primaryText: { color: theme.colors.accentText },
   secondaryText: { color: theme.colors.text },
   ghostText: { color: theme.colors.accent },
-});
+  });
+}

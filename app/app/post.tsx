@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
@@ -12,6 +12,8 @@ import { confirmAction } from "../../lib/confirmAction";
 import { FeedbackNotice, LoadingState, SignInRequired } from "../../components/ui/Premium";
 import { CATEGORY_OPTIONS, type JobCategory } from "../../lib/categories";
 import { isValidPostcodeDistrict, normalizePostcodeDistrict } from "../../lib/postcodeDistricts";
+import { useTheme } from "../../components/ui/ThemeProvider";
+import type { Theme } from "../../components/ui/theme";
 
 type Urgency = "Need now" | "Today" | "Flexible";
 
@@ -154,6 +156,9 @@ function getValidPreferredStartAt(value: string) {
 }
 
 export default function PostScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [title, setTitle] = useState("");
   const [detectedCategory, setDetectedCategory] = useState<Category>("Other");
   const [description, setDescription] = useState("");
@@ -544,11 +549,11 @@ export default function PostScreen() {
       <Text style={styles.subtitle}>Keep it simple. The aim is to post in under a minute.</Text>
       <FeedbackNotice type="info" text="Clear task details help nearby FEN helpers decide if they can apply." />
 
-      <TextInput placeholder="Job title" placeholderTextColor="#8D79AF" style={styles.input} value={title} onChangeText={setTitle} />
+      <TextInput placeholder="Job title" placeholderTextColor={theme.colors.placeholder} style={styles.input} value={title} onChangeText={setTitle} />
 
       {detectedCategory !== "Other" && (
         <View style={styles.catBadge}>
-          <Ionicons name="pricetag" size={14} color="#B56CFF" />
+          <Ionicons name="pricetag" size={14} color={theme.colors.accent} />
           <Text style={styles.catBadgeText}>{detectedCategory}</Text>
         </View>
       )}
@@ -573,10 +578,10 @@ export default function PostScreen() {
 
       <Pressable style={[styles.aiButton, aiSuggesting && styles.disabledButton]} onPress={handleAiSuggest} disabled={aiSuggesting}>
         {aiSuggesting ? (
-          <ActivityIndicator size="small" color="#B56CFF" />
+          <ActivityIndicator size="small" color={theme.colors.accent} />
         ) : (
           <>
-            <Ionicons name="sparkles" size={16} color="#B56CFF" />
+            <Ionicons name="sparkles" size={16} color={theme.colors.accent} />
             <Text style={styles.aiButtonText}>Suggest description &amp; budget</Text>
           </>
         )}
@@ -584,7 +589,7 @@ export default function PostScreen() {
 
       <TextInput
         placeholder="Description"
-        placeholderTextColor="#8D79AF"
+        placeholderTextColor={theme.colors.placeholder}
         style={[styles.input, styles.textArea, aiSuggested && styles.aiFilled]}
         multiline
         textAlignVertical="top"
@@ -599,11 +604,11 @@ export default function PostScreen() {
         <FeedbackNotice type="error" text={moderationBlock} />
       )}
 
-      <TextInput placeholder="Budget in GBP" placeholderTextColor="#8D79AF" style={[styles.input, aiSuggested && styles.aiFilled]} keyboardType="numeric" value={budget} onChangeText={(text: string) => { setBudget(text); setAiSuggested(false); }} />
+      <TextInput placeholder="Budget in GBP" placeholderTextColor={theme.colors.placeholder} style={[styles.input, aiSuggested && styles.aiFilled]} keyboardType="numeric" value={budget} onChangeText={(text: string) => { setBudget(text); setAiSuggested(false); }} />
 
       <TextInput
         placeholder="Where is the job? First part of postcode only"
-        placeholderTextColor="#8D79AF"
+        placeholderTextColor={theme.colors.placeholder}
         style={styles.input}
         autoCapitalize="characters"
         value={locationPostcode}
@@ -613,11 +618,11 @@ export default function PostScreen() {
 
       {showPostcodes ? (
         <>
-          <TextInput placeholder="From postcode area" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={fromPostcode} onChangeText={setFromPostcode} />
-          <TextInput placeholder="To postcode area" placeholderTextColor="#8D79AF" style={styles.input} autoCapitalize="characters" value={toPostcode} onChangeText={setToPostcode} />
+          <TextInput placeholder="From postcode area" placeholderTextColor={theme.colors.placeholder} style={styles.input} autoCapitalize="characters" value={fromPostcode} onChangeText={setFromPostcode} />
+          <TextInput placeholder="To postcode area" placeholderTextColor={theme.colors.placeholder} style={styles.input} autoCapitalize="characters" value={toPostcode} onChangeText={setToPostcode} />
           {movingEstimate ? (
             <View style={styles.estimateCard}>
-              <Ionicons name="navigate" size={14} color="#B56CFF" />
+              <Ionicons name="navigate" size={14} color={theme.colors.accent} />
               <Text style={styles.estimateText}>Suggested offer: {movingEstimate.estimate} · {movingEstimate.distance} · {movingEstimate.time}. Based on postcode areas, not an exact route.</Text>
             </View>
           ) : travelEstimateStatus ? (
@@ -641,14 +646,14 @@ export default function PostScreen() {
         </View>
       </View>
 
-      <TextInput placeholder="Preferred time (optional)" placeholderTextColor="#8D79AF" style={styles.input} value={preferredTime} onChangeText={setPreferredTime} />
+      <TextInput placeholder="Preferred time (optional)" placeholderTextColor={theme.colors.placeholder} style={styles.input} value={preferredTime} onChangeText={setPreferredTime} />
 
       <View style={styles.switchRow}>
         <View style={styles.flex}>
           <Text style={styles.label}>Tools supplied</Text>
           <Text style={styles.small}>Turn on if the worker does not need to bring tools.</Text>
         </View>
-        <Switch value={toolsSupplied} onValueChange={setToolsSupplied} thumbColor="#B56CFF" trackColor={{ false: "#3A2B52", true: "#6E46A3" }} />
+        <Switch value={toolsSupplied} onValueChange={setToolsSupplied} thumbColor={theme.colors.accent} trackColor={{ false: theme.colors.borderStrong, true: theme.colors.accent }} />
       </View>
 
       {selectedImages.length > 0 && (
@@ -657,7 +662,7 @@ export default function PostScreen() {
             <View key={uri} style={styles.thumbWrap}>
               <Image source={{ uri }} style={styles.thumb} />
               <Pressable style={styles.thumbRemove} onPress={() => handleRemoveImage(i)}>
-                <Ionicons name="close-circle" size={20} color="#B56CFF" />
+                <Ionicons name="close-circle" size={20} color={theme.colors.accent} />
               </Pressable>
             </View>
           ))}
@@ -666,7 +671,7 @@ export default function PostScreen() {
 
       {selectedImages.length < 3 && (
         <Pressable style={styles.addPhotosButton} onPress={handleAddPhotos} disabled={posting}>
-          <Ionicons name="camera-outline" size={18} color="#B56CFF" />
+          <Ionicons name="camera-outline" size={18} color={theme.colors.accent} />
           <Text style={styles.addPhotosText}>Add photos (optional)</Text>
         </Pressable>
       )}
@@ -695,7 +700,7 @@ export default function PostScreen() {
 
       <Pressable style={[styles.primaryButton, !canPost && styles.disabledButton]} onPress={handlePost} disabled={!canPost}>
         {posting ? (
-          <ActivityIndicator size="small" color="#140E1D" />
+          <ActivityIndicator size="small" color={theme.colors.accentText} />
         ) : (
               <Text style={styles.primaryButtonText}>{postedJobId ? "Job posted" : "Post job"}</Text>
             )}
@@ -704,10 +709,11 @@ export default function PostScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     padding: 20,
@@ -718,22 +724,22 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   title: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 28,
     lineHeight: 34,
     fontWeight: "800",
     marginTop: 8,
   },
   subtitle: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 16,
     lineHeight: 23,
   },
   catBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#20172E",
-    borderColor: "#5B3A87",
+    backgroundColor: theme.colors.surfaceAlt,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
@@ -742,7 +748,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   catBadgeText: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -755,8 +761,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categoryChip: {
-    backgroundColor: "#171024",
-    borderColor: "#231A33",
+    backgroundColor: theme.colors.chipBg,
+    borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
@@ -764,17 +770,17 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
   },
   categoryChipActive: {
-    backgroundColor: "#2A1E3D",
-    borderColor: "#B56CFF",
+    backgroundColor: theme.colors.chipActiveBg,
+    borderColor: theme.colors.accent,
   },
   categoryChipText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
   },
   categoryChipTextActive: {
-    color: "#F0E2FF",
+    color: theme.colors.text,
     fontWeight: "800",
   },
   aiButton: {
@@ -782,15 +788,15 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#171024",
-    borderColor: "#5B3A87",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
     gap: 8,
   },
   aiButtonText: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "700",
@@ -798,16 +804,16 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   aiFilled: {
-    borderColor: "#5B3A87",
+    borderColor: theme.colors.borderStrong,
   },
   input: {
-    backgroundColor: "#171024",
-    borderColor: "#231A33",
+    backgroundColor: theme.colors.inputBg,
+    borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 15,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
   },
   textArea: {
@@ -816,8 +822,8 @@ const styles = StyleSheet.create({
   estimateCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#171024",
-    borderColor: "#5B3A87",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 14,
@@ -825,14 +831,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   estimateText: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 14,
     fontWeight: "700",
     flex: 1,
     minWidth: 0,
   },
   postcodeHint: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontStyle: "italic",
   },
@@ -843,13 +849,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   label: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
     fontWeight: "700",
     marginBottom: 10,
   },
   small: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     lineHeight: 18,
     marginTop: 4,
@@ -860,35 +866,35 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   pill: {
-    backgroundColor: "#171024",
-    borderColor: "#231A33",
+    backgroundColor: theme.colors.chipBg,
+    borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   pillText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     fontWeight: "700",
   },
   pillActive: {
-    backgroundColor: "#2A1E3D",
-    borderColor: "#B56CFF",
+    backgroundColor: theme.colors.chipActiveBg,
+    borderColor: theme.colors.accent,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   pillActiveText: {
-    color: "#F0E2FF",
+    color: theme.colors.text,
     fontSize: 13,
     fontWeight: "800",
   },
   switchRow: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
     borderRadius: 16,
     padding: 14,
     flexDirection: "row",
@@ -897,49 +903,49 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   notice: {
-    backgroundColor: "#20172E",
+    backgroundColor: theme.colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#5B3A87",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 16,
     padding: 14,
     gap: 6,
   },
   noticeTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 14,
     fontWeight: "800",
   },
   noticeText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     lineHeight: 20,
   },
   modWarning: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#2B1E0A",
+    backgroundColor: theme.colors.warningBg,
     borderWidth: 1,
-    borderColor: "#7A4A1E",
+    borderColor: theme.colors.warning,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
   },
   modWarningText: {
-    color: "#FFB347",
+    color: theme.colors.warningText,
     fontSize: 13,
     flex: 1,
     lineHeight: 18,
   },
   warningText: {
-    color: "#FFB84D",
+    color: theme.colors.warningText,
     marginTop: 6,
     fontSize: 13,
   },
   blockText: {
-    color: "#FFD8DE",
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
+    color: theme.colors.dangerText,
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -948,9 +954,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   successText: {
-    color: "#C8F7D2",
-    backgroundColor: "#102619",
-    borderColor: "#2F7A45",
+    color: theme.colors.successText,
+    backgroundColor: theme.colors.successBg,
+    borderColor: theme.colors.success,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -960,23 +966,23 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   policyNotice: {
-    backgroundColor: "#1A1025",
+    backgroundColor: theme.colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   photoHint: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontStyle: "italic",
     marginTop: -6,
   },
   photoNotice: {
-    color: "#FFD8DE",
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
+    color: theme.colors.dangerText,
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -999,15 +1005,15 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 12,
-    backgroundColor: "#1A1025",
+    backgroundColor: theme.colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
   },
   thumbRemove: {
     position: "absolute",
     top: -8,
     right: -8,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     borderRadius: 10,
   },
   addPhotosButton: {
@@ -1015,27 +1021,27 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#171024",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
     gap: 8,
   },
   addPhotosText: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "700",
     textAlign: "center",
   },
   policyText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     lineHeight: 19,
   },
   primaryButton: {
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 16,
     paddingVertical: 16,
     marginTop: 4,
@@ -1044,7 +1050,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   primaryButtonText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     textAlign: "center",
     fontSize: 16,
     lineHeight: 20,
@@ -1052,14 +1058,15 @@ const styles = StyleSheet.create({
   },
   centered: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
   },
   loadingText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 15,
     marginTop: 12,
   },
-});
+  });
+}

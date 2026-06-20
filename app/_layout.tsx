@@ -2,13 +2,15 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { theme } from '../components/ui/theme';
+import { ThemeProvider, useTheme } from '../components/ui/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const NATIVE_INTRO_FALLBACK_MS = 30000;
 
 function AppShell() {
+  const theme = useTheme();
+
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }}>
       <Stack.Screen name="index" />
@@ -32,14 +34,15 @@ function WebAppShell() {
 }
 
 export default function RootLayout() {
-  if (Platform.OS === 'web') {
-    return <WebAppShell />;
-  }
-
-  return <NativeIntroShell />;
+  return (
+    <ThemeProvider>
+      {Platform.OS === 'web' ? <WebAppShell /> : <NativeIntroShell />}
+    </ThemeProvider>
+  );
 }
 
 function NativeIntroShell() {
+  const theme = useTheme();
   const { useCallback, useEffect, useRef, useState } = require('react');
   const { useVideoPlayer, VideoView } = require('expo-video');
   const { useEventListener } = require('expo');
@@ -93,7 +96,7 @@ function NativeIntroShell() {
   });
   if (!videoHasFinished) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.colors.bgDeep }]}>
         <VideoView
           style={styles.video}
           player={player}
@@ -112,7 +115,6 @@ function NativeIntroShell() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bgDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { getProfile, signOut, updateProfile } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 import type { Profile } from "../../lib/types";
 import type { TransportMode } from "../../lib/types";
 import { FeedbackNotice, InfoMetric, LoadingState, SignInRequired, TrustBanner } from "../../components/ui/Premium";
+import { useTheme, useThemeMode } from "../../components/ui/ThemeProvider";
+import type { Theme } from "../../components/ui/theme";
 
 const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
   { value: "walk", label: "Walk" },
@@ -16,6 +18,9 @@ const TRANSPORT_OPTIONS: { value: TransportMode; label: string }[] = [
 ];
 
 function InfoRow({ label, value }: { label: string; value: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
@@ -30,6 +35,11 @@ function getProfileInitial(profile: Profile | null) {
 }
 
 export default function ProfileScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { mode, setThemeMode } = useThemeMode();
+  const darkModeEnabled = mode === "dark";
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -188,6 +198,24 @@ export default function ProfileScreen() {
         <FeedbackNotice type={actionMessage.type} text={actionMessage.text} />
       ) : null}
 
+      <View style={styles.appearanceCard}>
+        <View style={styles.appearanceText}>
+          <Text style={styles.appearanceTitle}>Appearance</Text>
+          <Text style={styles.appearanceSubtitle}>Use the theme that feels easiest to read.</Text>
+        </View>
+        <View style={styles.themeToggleRow}>
+          <Text style={styles.themeToggleLabel}>Dark mode</Text>
+          <Switch
+            value={darkModeEnabled}
+            onValueChange={(enabled: boolean) => {
+              void setThemeMode(enabled ? "dark" : "light");
+            }}
+            thumbColor={theme.colors.accent}
+            trackColor={{ false: theme.colors.borderStrong, true: theme.colors.accent }}
+          />
+        </View>
+      </View>
+
       {editing ? (
         <>
           <View style={styles.card}>
@@ -197,7 +225,7 @@ export default function ProfileScreen() {
               value={editDisplayName}
               onChangeText={setEditDisplayName}
               placeholder="Your name"
-              placeholderTextColor="#8D79AF"
+              placeholderTextColor={theme.colors.placeholder}
               editable={!saving}
             />
 
@@ -207,7 +235,7 @@ export default function ProfileScreen() {
               value={editPostcode}
               onChangeText={(v: string) => setEditPostcode(v.toUpperCase())}
               placeholder="e.g. SW1A 1AA"
-              placeholderTextColor="#8D79AF"
+              placeholderTextColor={theme.colors.placeholder}
               autoCapitalize="characters"
               editable={!saving}
             />
@@ -218,7 +246,7 @@ export default function ProfileScreen() {
               value={editBio}
               onChangeText={setEditBio}
               placeholder="A short description about yourself (optional)"
-              placeholderTextColor="#8D79AF"
+              placeholderTextColor={theme.colors.placeholder}
               multiline
               textAlignVertical="top"
               editable={!saving}
@@ -243,7 +271,7 @@ export default function ProfileScreen() {
 
           <View style={styles.editActions}>
             <Pressable style={[styles.primaryButton, saving && styles.disabledButton]} onPress={handleSave} disabled={saving}>
-              {saving ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Save changes</Text>}
+              {saving ? <ActivityIndicator size="small" color={theme.colors.accentText} /> : <Text style={styles.primaryButtonText}>Save changes</Text>}
             </Pressable>
             <Pressable style={styles.secondaryButton} onPress={() => setEditing(false)} disabled={saving}>
               <Text style={styles.secondaryButtonText}>Cancel</Text>
@@ -327,16 +355,17 @@ export default function ProfileScreen() {
       </View>
 
       <Pressable style={[styles.primaryButton, loggingOut && styles.disabledButton]} onPress={handleLogout} disabled={loggingOut}>
-        {loggingOut ? <ActivityIndicator size="small" color="#140E1D" /> : <Text style={styles.primaryButtonText}>Logout</Text>}
+        {loggingOut ? <ActivityIndicator size="small" color={theme.colors.accentText} /> : <Text style={styles.primaryButtonText}>Logout</Text>}
       </Pressable>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     padding: 20,
@@ -344,28 +373,28 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   title: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 30,
     fontWeight: "800",
     marginTop: 8,
   },
   subtitle: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 16,
     lineHeight: 23,
   },
   card: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
     borderRadius: 18,
     padding: 16,
     gap: 10,
   },
   identityCard: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#5B3A87",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 18,
     padding: 16,
     gap: 14,
@@ -379,14 +408,14 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: "#2A1E3D",
-    borderColor: "#B56CFF",
+    backgroundColor: theme.colors.accentSoft,
+    borderColor: theme.colors.accent,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
-    color: "#F0E2FF",
+    color: theme.colors.text,
     fontSize: 24,
     fontWeight: "900",
   },
@@ -396,17 +425,17 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   name: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 22,
     fontWeight: "800",
   },
   emailText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     lineHeight: 18,
   },
   meta: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 14,
     fontWeight: "700",
   },
@@ -418,8 +447,8 @@ const styles = StyleSheet.create({
   metaPill: {
     flex: 1,
     minWidth: 150,
-    backgroundColor: "#0E0A14",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.bg,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 12,
@@ -427,26 +456,26 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   metaLabel: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
   },
   metaValue: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 14,
     lineHeight: 19,
     fontWeight: "800",
   },
   bio: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 15,
     lineHeight: 22,
   },
   bioPrompt: {
-    color: "#CBB8F1",
-    backgroundColor: "#20172E",
-    borderColor: "#3A2B52",
+    color: theme.colors.muted,
+    backgroundColor: theme.colors.surfaceAlt,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
@@ -456,15 +485,15 @@ const styles = StyleSheet.create({
   infoRow: {
     paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "#231A33",
+    borderBottomColor: theme.colors.border,
   },
   infoLabel: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     marginBottom: 4,
   },
   infoValue: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
     fontWeight: "700",
   },
@@ -474,8 +503,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   completionCard: {
-    backgroundColor: "#171024",
-    borderColor: "#231A33",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 18,
     padding: 16,
@@ -488,28 +517,28 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   completionTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
     fontWeight: "800",
   },
   completionPercent: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 16,
     fontWeight: "900",
   },
   progressTrack: {
     height: 8,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     borderRadius: 999,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 999,
   },
   completionText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -521,8 +550,8 @@ const styles = StyleSheet.create({
   completionItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0E0A14",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.bg,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
@@ -533,41 +562,41 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: "#5B3A87",
+    backgroundColor: theme.colors.borderStrong,
   },
   completionDotDone: {
-    backgroundColor: "#66D19E",
+    backgroundColor: theme.colors.success,
   },
   completionItemText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 12,
     fontWeight: "800",
   },
   completionItemDone: {
-    color: "#D7F5DE",
+    color: theme.colors.successText,
     fontSize: 12,
     fontWeight: "800",
   },
   secondaryButton: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
     borderRadius: 16,
     paddingVertical: 16,
   },
   secondaryButtonText: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     textAlign: "center",
     fontSize: 16,
     fontWeight: "800",
   },
   primaryButton: {
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 16,
     paddingVertical: 16,
   },
   primaryButtonText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     textAlign: "center",
     fontSize: 16,
     fontWeight: "800",
@@ -579,20 +608,20 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   fieldLabel: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontWeight: "700",
     marginBottom: 6,
     marginTop: 8,
   },
   fieldInput: {
-    backgroundColor: "#0E0A14",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.inputBg,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
   },
   fieldTextArea: {
@@ -607,40 +636,40 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   transportChip: {
-    backgroundColor: "#0E0A14",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.chipBg,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   transportChipActive: {
-    backgroundColor: "#2A1E3D",
-    borderColor: "#B56CFF",
+    backgroundColor: theme.colors.chipActiveBg,
+    borderColor: theme.colors.accent,
   },
   transportChipText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontWeight: "700",
   },
   transportChipTextActive: {
-    color: "#F0E2FF",
+    color: theme.colors.text,
   },
   centered: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     alignItems: "center",
     justifyContent: "center",
   },
   loadingText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 15,
     marginTop: 12,
   },
   inlineErrorText: {
-    color: "#FFD8DE",
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
+    color: theme.colors.dangerText,
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -649,9 +678,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   successText: {
-    color: "#C8F7D2",
-    backgroundColor: "#102619",
-    borderColor: "#2F7A45",
+    color: theme.colors.successText,
+    backgroundColor: theme.colors.successBg,
+    borderColor: theme.colors.success,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -660,20 +689,20 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   trustCard: {
-    backgroundColor: "#20172E",
+    backgroundColor: theme.colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#5B3A87",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 16,
     padding: 16,
     gap: 10,
   },
   trustTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
     fontWeight: "800",
   },
   trustText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -683,8 +712,41 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   legalLink: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 13,
     fontWeight: "800",
   },
-});
+  appearanceCard: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+  },
+  appearanceText: {
+    gap: 4,
+  },
+  appearanceTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  appearanceSubtitle: {
+    color: theme.colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  themeToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  themeToggleLabel: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  });
+}

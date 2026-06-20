@@ -47,9 +47,13 @@ import { supabase } from "../../../lib/supabase";
 import { getProfileTravelArea } from "../../../lib/profiles";
 import type { Application, Job } from "../../../lib/types";
 import { EmptyState, FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
+import RouteQuotes from "../../../components/jobs/RouteQuotes";
+import { useTheme } from "../../../components/ui/ThemeProvider";
+import type { Theme } from "../../../components/ui/theme";
 import { normalizeCategory } from "../../../lib/categories";
 import { confirmAction } from "../../../lib/confirmAction";
 import { formatPostcodeAreaLabel, isValidPostcodeDistrict, normalizePostcodeDistrict } from "../../../lib/postcodeDistricts";
+import { isRouteQuotesEnabled } from "../../../lib/routeQuotes";
 
 function toStatusLabel(status?: string) {
   switch (status) {
@@ -184,6 +188,8 @@ function hasPartialCommitmentSnapshot(job: Job) {
 }
 
 export default function JobDetailScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const jobId = useMemo(() => {
@@ -441,6 +447,7 @@ export default function JobDetailScreen() {
     ? `Commitment window starts around ${formatStartTime(commitmentWindow.startsAt.toISOString())}`
     : null;
   const startTimeActionLabel = canChangeStartTimeProposal ? "Change proposed time" : "Propose start time";
+  const routeQuotesEnabled = isRouteQuotesEnabled();
 
   async function handleApply() {
     markFeedbackForCurrentJob();
@@ -979,7 +986,14 @@ export default function JobDetailScreen() {
           </Text>
         </View>
 
-        {isSignedIn && !isPoster && (
+        {isSignedIn && !isPoster && routeQuotesEnabled && (
+          <RouteQuotes
+            jobPostcode={normalizePostcodeDistrict((job as any)?.postcode_district) || normalizePostcodeDistrict(job.postcode)}
+            fallbackText={travelEstimateText}
+          />
+        )}
+
+        {isSignedIn && !isPoster && !routeQuotesEnabled && (
           <View style={styles.noticeCard}>
             <Text style={styles.noticeTitle}>Travel estimate</Text>
             <Text style={styles.noticeText}>{travelEstimateText}</Text>
@@ -1019,7 +1033,7 @@ export default function JobDetailScreen() {
             <Text style={styles.acceptedText}>{lifecycleHelp}</Text>
             <Pressable style={[styles.btn, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(acceptedWorkerId)} disabled={openingConversation}>
               {openingConversation ? (
-                <ActivityIndicator size="small" color="#140E1D" />
+                <ActivityIndicator size="small" color={theme.colors.accentText} />
               ) : (
                 <Text style={styles.btnText}>Open Messages</Text>
               )}
@@ -1089,7 +1103,7 @@ export default function JobDetailScreen() {
                   disabled={updatingStartTime}
                 >
                   {updatingStartTime ? (
-                    <ActivityIndicator size="small" color="#E7D9FF" />
+                    <ActivityIndicator size="small" color={theme.colors.text} />
                   ) : (
                     <Text style={styles.secondaryButtonText}>{startTimeActionLabel}</Text>
                   )}
@@ -1104,7 +1118,7 @@ export default function JobDetailScreen() {
                 disabled={updatingStartTime}
               >
                 {updatingStartTime ? (
-                  <ActivityIndicator size="small" color="#140E1D" />
+                  <ActivityIndicator size="small" color={theme.colors.accentText} />
                 ) : (
                   <Text style={styles.btnText}>Confirm start time</Text>
                 )}
@@ -1151,7 +1165,7 @@ export default function JobDetailScreen() {
             <Text style={styles.acceptedText}>{lifecycleHelp}</Text>
             <Pressable style={[styles.btn, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(currentUserId || undefined)} disabled={openingConversation}>
               {openingConversation ? (
-                <ActivityIndicator size="small" color="#140E1D" />
+                <ActivityIndicator size="small" color={theme.colors.accentText} />
               ) : (
                 <Text style={styles.btnText}>Open Messages</Text>
               )}
@@ -1193,7 +1207,7 @@ export default function JobDetailScreen() {
             <TextInput
               style={styles.applicationInput}
               placeholder="Optional message to the poster"
-              placeholderTextColor="#8D79AF"
+              placeholderTextColor={theme.colors.placeholder}
               value={applicationMessage}
               onChangeText={setApplicationMessage}
               editable={!applying}
@@ -1206,7 +1220,7 @@ export default function JobDetailScreen() {
               onPress={handleApply}
             >
               {applying ? (
-                <ActivityIndicator size="small" color="#140E1D" />
+                <ActivityIndicator size="small" color={theme.colors.accentText} />
               ) : (
                 <Text style={styles.btnText}>
                   {(job as any)?.status === "open" ? "Apply for this job" : "Applications closed"}
@@ -1234,7 +1248,7 @@ export default function JobDetailScreen() {
         {isPoster && (job as any)?.status === "in_progress" && (
           <Pressable style={styles.btn} onPress={handleCompleteJob} disabled={completingJob}>
             {completingJob ? (
-              <ActivityIndicator size="small" color="#140E1D" />
+              <ActivityIndicator size="small" color={theme.colors.accentText} />
             ) : (
               <Text style={styles.btnText}>Complete job</Text>
             )}
@@ -1309,7 +1323,7 @@ export default function JobDetailScreen() {
                         {isSelected ? (
                           <Pressable style={[styles.acceptButton, openingConversation && styles.btnDisabled]} onPress={() => handleOpenConversation(application.worker_id)} disabled={openingConversation}>
                             {openingConversation ? (
-                              <ActivityIndicator size="small" color="#140E1D" />
+                              <ActivityIndicator size="small" color={theme.colors.accentText} />
                             ) : (
                               <Text style={styles.acceptButtonText}>Open Messages</Text>
                             )}
@@ -1321,7 +1335,7 @@ export default function JobDetailScreen() {
                             disabled={accepting || (job as any)?.status === "cancelled"}
                           >
                             {isAcceptingThisWorker ? (
-                              <ActivityIndicator size="small" color="#140E1D" />
+                              <ActivityIndicator size="small" color={theme.colors.accentText} />
                             ) : (
                               <Text style={styles.acceptButtonText}>
                                 {(job as any)?.status === "cancelled" ? "Job cancelled" : "Accept"}
@@ -1356,7 +1370,7 @@ export default function JobDetailScreen() {
               <TextInput
                 style={styles.modalInputSingle}
                 placeholder="Title"
-                placeholderTextColor="#8D79AF"
+                placeholderTextColor={theme.colors.placeholder}
                 value={editTitle}
                 onChangeText={setEditTitle}
                 editable={!savingJob}
@@ -1364,7 +1378,7 @@ export default function JobDetailScreen() {
               <TextInput
                 style={styles.modalInput}
                 placeholder="Description"
-                placeholderTextColor="#8D79AF"
+                placeholderTextColor={theme.colors.placeholder}
                 value={editDescription}
                 onChangeText={setEditDescription}
                 multiline
@@ -1374,7 +1388,7 @@ export default function JobDetailScreen() {
               <TextInput
                 style={styles.modalInputSingle}
                 placeholder="Budget in GBP"
-                placeholderTextColor="#8D79AF"
+                placeholderTextColor={theme.colors.placeholder}
                 value={editBudget}
                 onChangeText={setEditBudget}
                 keyboardType="numeric"
@@ -1383,7 +1397,7 @@ export default function JobDetailScreen() {
               <TextInput
                 style={styles.modalInputSingle}
                 placeholder="Category"
-                placeholderTextColor="#8D79AF"
+                placeholderTextColor={theme.colors.placeholder}
                 value={editCategory}
                 onChangeText={setEditCategory}
                 editable={!savingJob}
@@ -1391,7 +1405,7 @@ export default function JobDetailScreen() {
               <TextInput
                 style={styles.modalInputSingle}
                 placeholder="Where is the job? First part only"
-                placeholderTextColor="#8D79AF"
+                placeholderTextColor={theme.colors.placeholder}
                 value={editPostcode}
                 onChangeText={setEditPostcode}
                 autoCapitalize="characters"
@@ -1413,7 +1427,7 @@ export default function JobDetailScreen() {
                   disabled={savingJob}
                 >
                   {savingJob ? (
-                    <ActivityIndicator size="small" color="#140E1D" />
+                    <ActivityIndicator size="small" color={theme.colors.accentText} />
                   ) : (
                     <Text style={styles.modalSubmitText}>Save</Text>
                   )}
@@ -1428,10 +1442,11 @@ export default function JobDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     padding: 16,
@@ -1442,33 +1457,33 @@ const styles = StyleSheet.create({
   },
   centered: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
   },
   loadingText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     marginTop: 12,
     fontSize: 15,
   },
   errorTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 18,
     fontWeight: "800",
     marginBottom: 8,
     textAlign: "center",
   },
   errorText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     textAlign: "center",
     marginBottom: 20,
   },
   inlineErrorText: {
-    color: "#FFD8DE",
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
+    color: theme.colors.dangerText,
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -1478,9 +1493,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   successText: {
-    color: "#C8F7D2",
-    backgroundColor: "#102619",
-    borderColor: "#2F7A45",
+    color: theme.colors.successText,
+    backgroundColor: theme.colors.successBg,
+    borderColor: theme.colors.success,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -1490,29 +1505,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   successBanner: {
-    backgroundColor: "#102619",
-    borderColor: "#2F7A45",
+    backgroundColor: theme.colors.successBg,
+    borderColor: theme.colors.success,
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
   },
   successBannerText: {
-    color: "#C8F7D2",
+    color: theme.colors.successText,
     fontSize: 14,
     fontWeight: "700",
     lineHeight: 20,
   },
   errorBanner: {
-    backgroundColor: "#2B161B",
-    borderColor: "#8E4656",
+    backgroundColor: theme.colors.dangerBg,
+    borderColor: theme.colors.danger,
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
   },
   errorBannerText: {
-    color: "#FFD8DE",
+    color: theme.colors.dangerText,
     fontSize: 14,
     fontWeight: "700",
     lineHeight: 20,
@@ -1521,17 +1536,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   backBtnText: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 15,
     fontWeight: "700",
   },
   heroCard: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderRadius: 18,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
   },
   titleRow: {
     flexDirection: "row",
@@ -1542,7 +1557,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 20,
     lineHeight: 25,
     fontWeight: "800",
@@ -1550,38 +1565,38 @@ const styles = StyleSheet.create({
     minWidth: 190,
   },
   budget: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 18,
     fontWeight: "800",
     flexShrink: 0,
   },
   statusBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "#20172E",
+    backgroundColor: theme.colors.surfaceAlt,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   statusText: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 12,
     fontWeight: "700",
   },
   statusHelp: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     lineHeight: 19,
   },
   card: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderRadius: 18,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#231A33",
+    borderColor: theme.colors.border,
   },
   sectionTitle: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 14,
     fontWeight: "800",
     marginBottom: 10,
@@ -1589,12 +1604,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   bodyText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 15,
     lineHeight: 22,
   },
   cutoffText: {
-    color: "#FFB347",
+    color: theme.colors.warning,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: "800",
@@ -1607,69 +1622,69 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "#231A33",
+    borderBottomColor: theme.colors.border,
   },
   detailLabel: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontWeight: "700",
   },
   detailValue: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 13,
     fontWeight: "700",
     flexShrink: 1,
     textAlign: "right",
   },
   noticeCard: {
-    backgroundColor: "#20172E",
+    backgroundColor: theme.colors.surfaceAlt,
     borderRadius: 16,
     padding: 14,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#5B3A87",
+    borderColor: theme.colors.borderStrong,
   },
   noticeTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 14,
     fontWeight: "800",
     marginBottom: 4,
   },
   noticeText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     lineHeight: 20,
   },
   btn: {
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
     alignItems: "center",
   },
   btnDisabled: {
-    backgroundColor: "#2A1E3D",
+    backgroundColor: theme.colors.accentSoft,
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: "center",
     opacity: 0.5,
   },
   btnText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     fontSize: 16,
     fontWeight: "800",
   },
   flaggedBanner: {
-    backgroundColor: "#2B1E0A",
+    backgroundColor: theme.colors.warningBg,
     borderWidth: 1,
-    borderColor: "#7A4A1E",
+    borderColor: theme.colors.warning,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     marginBottom: 12,
   },
   flaggedText: {
-    color: "#FFB347",
+    color: theme.colors.warningText,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -1682,21 +1697,21 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   reportBtnText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 14,
     fontWeight: "700",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: theme.colors.overlay,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
   },
   modalCard: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 20,
     padding: 20,
     width: "100%",
@@ -1704,63 +1719,63 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 17,
     fontWeight: "800",
   },
   modalLabel: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontWeight: "700",
   },
   modalInput: {
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.inputBg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
     minHeight: 80,
     textAlignVertical: "top",
   },
   modalInputSingle: {
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.inputBg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
   },
   modalHint: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 12,
     lineHeight: 17,
     marginTop: -4,
   },
   applicationInput: {
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.inputBg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
     minHeight: 78,
     textAlignVertical: "top",
   },
   startInput: {
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.inputBg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 11,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
   },
   dateChipRow: {
@@ -1770,52 +1785,52 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   dateChip: {
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.chipBg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   dateChipActive: {
-    borderColor: "#B56CFF",
-    backgroundColor: "#2A1E3D",
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.chipActiveBg,
   },
   dateChipText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontWeight: "800",
   },
   dateChipTextActive: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
   },
   timeScroll: {
     marginTop: 10,
   },
   timeChip: {
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.chipBg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginRight: 8,
   },
   timeChipActive: {
-    borderColor: "#B56CFF",
-    backgroundColor: "#2A1E3D",
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.chipActiveBg,
   },
   timeChipText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontWeight: "800",
   },
   timeChipTextActive: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
   },
   secondaryButton: {
     borderWidth: 1,
-    borderColor: "#6E46A3",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 12,
@@ -1826,7 +1841,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   secondaryButtonText: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "800",
@@ -1842,20 +1857,20 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 120,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
   },
   modalCancelText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 15,
     fontWeight: "700",
   },
   modalSubmit: {
     flex: 1,
     minWidth: 120,
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
@@ -1864,7 +1879,7 @@ modalSubmitDisabled: {
     opacity: 0.5,
   },
   modalSubmitText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     fontSize: 15,
     fontWeight: "800",
   },
@@ -1872,9 +1887,9 @@ modalSubmitDisabled: {
     maxHeight: 300,
   },
   applicationCard: {
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
@@ -1888,103 +1903,104 @@ modalSubmitDisabled: {
     marginBottom: 8,
   },
   applicationName: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
     fontWeight: "800",
   },
   applicationMeta: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 12,
   },
   applicationMessage: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     marginBottom: 10,
   },
   alreadySelected: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 13,
     fontWeight: "700",
   },
   acceptButton: {
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: "center",
   },
   acceptButtonText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     fontSize: 14,
     fontWeight: "800",
   },
   acceptedCard: {
-    backgroundColor: "#20172E",
+    backgroundColor: theme.colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#5B3A87",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     gap: 10,
   },
   acceptedTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 16,
     fontWeight: "800",
   },
   acceptedText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
   },
   cancelledCard: {
-    backgroundColor: "#2B161B",
+    backgroundColor: theme.colors.dangerBg,
     borderWidth: 1,
-    borderColor: "#8E4656",
+    borderColor: theme.colors.danger,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     gap: 6,
   },
   cancelledTitle: {
-    color: "#FFD8DE",
+    color: theme.colors.dangerText,
     fontSize: 16,
     fontWeight: "800",
   },
   cancelledText: {
-    color: "#FFB0B0",
+    color: theme.colors.dangerText,
     fontSize: 14,
     lineHeight: 20,
   },
   cancelButton: {
-    backgroundColor: "#2B161B",
+    backgroundColor: theme.colors.dangerBg,
     borderWidth: 1,
-    borderColor: "#8E4656",
+    borderColor: theme.colors.danger,
     borderRadius: 14,
     paddingVertical: 14,
     marginTop: 8,
   },
   cancelButtonText: {
-    color: "#FFB0B0",
+    color: theme.colors.dangerText,
     textAlign: "center",
     fontSize: 15,
     fontWeight: "700",
   },
   removeButton: {
     borderWidth: 1,
-    borderColor: "#8E4656",
+    borderColor: theme.colors.danger,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
     marginTop: 10,
   },
   removeButtonText: {
-    color: "#FFB0B0",
+    color: theme.colors.dangerText,
     fontSize: 15,
     fontWeight: "800",
   },
   emptyText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 14,
     textAlign: "center",
     marginVertical: 20,
   },
-});
+  });
+}

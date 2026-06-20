@@ -1,9 +1,11 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 import { normalizeCategory } from "../../lib/categories";
 import { getDistrictPosition, normalizePostcodeDistrict } from "../../lib/postcodeDistricts";
 import type { Job } from "../../lib/types";
-import { theme } from "../ui/theme";
+import { useTheme } from "../ui/ThemeProvider";
+import type { Theme } from "../ui/theme";
 
 type DistrictGroup = {
   district: string;
@@ -68,7 +70,30 @@ function markerSummary(group: DistrictGroup) {
   return budgetFromJob(group.jobs[0]);
 }
 
+function getMapPalette(theme: Theme) {
+  return {
+    bg: theme.colors.mapBg,
+    land: theme.colors.mapLand,
+    landStroke: theme.colors.borderStrong,
+    water: theme.colors.mapWater,
+    road: theme.colors.mapRoad,
+    minorRoad: theme.colors.border,
+    grid: theme.colors.border,
+    centerFill: theme.colors.surfaceAlt,
+    centerStroke: theme.colors.borderStrong,
+    markerHalo: theme.colors.accentSoft,
+    markerHaloSelected: theme.colors.surfaceAlt,
+    markerCard: theme.colors.surfaceRaised,
+    markerCardBorder: theme.colors.border,
+    markerSelectedBorder: theme.colors.accent,
+    markerDotBorder: theme.colors.surface,
+  };
+}
+
 export default function BrowseMapBase({ jobs, selectedId, onJobPress }: Props) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  const mapPalette = useMemo(() => getMapPalette(theme), [theme]);
   const groups = groupJobsByDistrict(jobs);
   const areas = groups.map((group) => group.district).slice(0, 4);
 
@@ -93,42 +118,42 @@ export default function BrowseMapBase({ jobs, selectedId, onJobPress }: Props) {
 
       <View style={styles.mapArea}>
         <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={styles.mapSvg}>
-          <Rect x="0" y="0" width="100" height="100" rx="6" fill="#100B18" />
+          <Rect x="0" y="0" width="100" height="100" rx="6" fill={mapPalette.bg} />
           <Path
             d="M13 18 C22 9 39 10 50 15 C64 20 78 17 88 29 C97 40 88 55 91 71 C80 83 63 88 47 84 C31 81 18 85 9 73 C2 62 12 48 9 35 C8 28 9 23 13 18 Z"
-            fill="#171024"
-            stroke="rgba(181, 108, 255, 0.28)"
+            fill={mapPalette.land}
+            stroke={mapPalette.landStroke}
             strokeWidth="0.7"
           />
           <Path
             d="M19 70 C31 61 38 61 48 54 C58 47 65 38 80 32"
-            stroke="rgba(92, 207, 255, 0.2)"
+            stroke={mapPalette.water}
             strokeWidth="1.4"
             fill="none"
           />
           <Polyline
             points="15,45 28,43 38,48 52,45 67,51 84,49"
-            stroke="rgba(231, 217, 255, 0.14)"
+            stroke={mapPalette.road}
             strokeWidth="0.65"
             fill="none"
           />
           <Polyline
             points="27,18 31,30 29,42 33,56 30,72"
-            stroke="rgba(231, 217, 255, 0.11)"
+            stroke={mapPalette.minorRoad}
             strokeWidth="0.55"
             fill="none"
           />
           <Polyline
             points="61,18 56,31 60,45 55,60 58,78"
-            stroke="rgba(231, 217, 255, 0.11)"
+            stroke={mapPalette.minorRoad}
             strokeWidth="0.55"
             fill="none"
           />
-          <Line x1="8" y1="28" x2="91" y2="28" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
-          <Line x1="8" y1="72" x2="91" y2="72" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
-          <Line x1="22" y1="10" x2="22" y2="88" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
-          <Line x1="78" y1="12" x2="78" y2="86" stroke="rgba(181, 108, 255, 0.08)" strokeWidth="0.45" />
-          <Circle cx="49" cy="45" r="2.8" fill="rgba(231, 217, 255, 0.12)" stroke="rgba(181, 108, 255, 0.22)" strokeWidth="0.4" />
+          <Line x1="8" y1="28" x2="91" y2="28" stroke={mapPalette.grid} strokeWidth="0.45" />
+          <Line x1="8" y1="72" x2="91" y2="72" stroke={mapPalette.grid} strokeWidth="0.45" />
+          <Line x1="22" y1="10" x2="22" y2="88" stroke={mapPalette.grid} strokeWidth="0.45" />
+          <Line x1="78" y1="12" x2="78" y2="86" stroke={mapPalette.grid} strokeWidth="0.45" />
+          <Circle cx="49" cy="45" r="2.8" fill={mapPalette.centerFill} stroke={mapPalette.centerStroke} strokeWidth="0.4" />
         </Svg>
 
         {groups.map((group) => {
@@ -187,17 +212,18 @@ export default function BrowseMapBase({ jobs, selectedId, onJobPress }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   container: {
-    backgroundColor: "#100B18",
-    borderColor: "rgba(181, 108, 255, 0.22)",
+    backgroundColor: theme.colors.mapBg,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 18,
     overflow: "hidden",
   },
   summary: {
-    backgroundColor: "rgba(14, 10, 20, 0.94)",
-    borderBottomColor: "rgba(181, 108, 255, 0.14)",
+    backgroundColor: theme.colors.overlaySoft,
+    borderBottomColor: theme.colors.border,
     borderBottomWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -218,7 +244,7 @@ const styles = StyleSheet.create({
   mapArea: {
     minHeight: 272,
     position: "relative",
-    backgroundColor: "#100B18",
+    backgroundColor: theme.colors.mapBg,
     overflow: "hidden",
   },
   mapSvg: {
@@ -237,12 +263,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   helper: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 9,
     fontWeight: "700",
   },
   areas: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 9,
     fontWeight: "800",
     maxWidth: 190,
@@ -265,13 +291,13 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(181, 108, 255, 0.18)",
-    borderColor: "rgba(181, 108, 255, 0.42)",
+    backgroundColor: theme.colors.accentSoft,
+    borderColor: theme.colors.accent,
     borderWidth: 1,
   },
   markerDotWrapSelected: {
-    backgroundColor: "rgba(240, 226, 255, 0.2)",
-    borderColor: "#F0E2FF",
+    backgroundColor: theme.colors.surfaceAlt,
+    borderColor: theme.colors.accent,
   },
   markerDotWrapFallback: {
     borderStyle: "dashed",
@@ -282,20 +308,20 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: theme.colors.accent,
     borderWidth: 1,
-    borderColor: "#F0E2FF",
+    borderColor: theme.colors.surface,
   },
   markerCard: {
     minWidth: 88,
     maxWidth: 108,
-    backgroundColor: "rgba(28, 19, 42, 0.92)",
-    borderColor: "rgba(231, 217, 255, 0.14)",
+    backgroundColor: theme.colors.surfaceRaised,
+    borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 11,
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
   markerCardSelected: {
-    borderColor: "rgba(181, 108, 255, 0.7)",
+    borderColor: theme.colors.accent,
   },
   markerArea: {
     color: theme.colors.text,
@@ -346,8 +372,8 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 9,
-    backgroundColor: "rgba(14, 10, 20, 0.92)",
-    borderTopColor: "rgba(181, 108, 255, 0.14)",
+    backgroundColor: theme.colors.overlaySoft,
+    borderTopColor: theme.colors.border,
     borderTopWidth: 1,
   },
   legendItem: {
@@ -371,4 +397,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
   },
-});
+  });
+}

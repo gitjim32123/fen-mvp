@@ -1,9 +1,11 @@
-import { ReactNode } from "react";
+import { ReactNode, useMemo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { theme } from "./theme";
+import { useTheme } from "./ThemeProvider";
+import type { Theme } from "./theme";
 
 export function Card({ children, style }: { children: ReactNode; style?: object }) {
+  const styles = usePremiumStyles();
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
@@ -14,6 +16,7 @@ export function PageHeader({
   title: string;
   subtitle?: string;
 }) {
+  const styles = usePremiumStyles();
   return (
     <View style={styles.header}>
       <Text style={styles.title}>{title}</Text>
@@ -29,6 +32,7 @@ export function Pill({
   label: string;
   tone?: "default" | "success" | "warning" | "danger" | "info";
 }) {
+  const styles = usePremiumStyles();
   return (
     <View style={[styles.pill, styles[`${tone}Pill`]]}>
       <Text style={[styles.pillText, styles[`${tone}PillText`]]}>{label}</Text>
@@ -37,6 +41,7 @@ export function Pill({
 }
 
 export function TrustBanner({ title = "FEN safety", children }: { title?: string; children: ReactNode }) {
+  const styles = usePremiumStyles();
   return (
     <View style={styles.trust}>
       <Text style={styles.trustTitle}>{title}</Text>
@@ -46,6 +51,7 @@ export function TrustBanner({ title = "FEN safety", children }: { title?: string
 }
 
 export function EmptyState({ title, text }: { title: string; text?: string }) {
+  const styles = usePremiumStyles();
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyTitle}>{title}</Text>
@@ -56,7 +62,14 @@ export function EmptyState({ title, text }: { title: string; text?: string }) {
 
 type FeedbackTone = "success" | "error" | "warning" | "info";
 
-function getFeedbackStyles(type: FeedbackTone) {
+type PremiumStyles = ReturnType<typeof createStyles>;
+
+function usePremiumStyles() {
+  const theme = useTheme();
+  return useMemo(() => createStyles(theme), [theme]);
+}
+
+function getFeedbackStyles(type: FeedbackTone, styles: PremiumStyles) {
   switch (type) {
     case "success":
       return {
@@ -94,7 +107,8 @@ export function FeedbackNotice({
   title?: string;
   text: string;
 }) {
-  const feedback = getFeedbackStyles(type);
+  const styles = usePremiumStyles();
+  const feedback = getFeedbackStyles(type, styles);
   return (
     <View style={[styles.feedback, feedback.box]}>
       {title ? <Text style={[styles.feedbackTitle, feedback.title]}>{title}</Text> : null}
@@ -112,6 +126,9 @@ export function LoadingState({
   fullScreen?: boolean;
   compact?: boolean;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={[styles.loading, fullScreen && styles.loadingFullScreen, compact && styles.loadingCompact]}>
       <ActivityIndicator size={compact ? "small" : "large"} color={theme.colors.accent} />
@@ -121,6 +138,7 @@ export function LoadingState({
 }
 
 export function InfoMetric({ label, value }: { label: string; value: string }) {
+  const styles = usePremiumStyles();
   return (
     <View style={styles.metric}>
       <Text style={styles.metricValue}>{value}</Text>
@@ -136,6 +154,7 @@ export function SignInRequired({
   title?: string;
   text?: string;
 }) {
+  const styles = usePremiumStyles();
   return (
     <View style={styles.signInCard}>
       <Text style={styles.signInTitle}>{title}</Text>
@@ -147,7 +166,8 @@ export function SignInRequired({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.border,
@@ -187,13 +207,13 @@ const styles = StyleSheet.create({
   defaultPill: {},
   defaultPillText: {},
   successPill: { backgroundColor: theme.colors.successBg, borderColor: theme.colors.success },
-  successPillText: { color: "#D7F5DE" },
+  successPillText: { color: theme.colors.successText },
   warningPill: { backgroundColor: theme.colors.warningBg, borderColor: theme.colors.warning },
-  warningPillText: { color: "#FFE0B8" },
+  warningPillText: { color: theme.colors.warningText },
   dangerPill: { backgroundColor: theme.colors.dangerBg, borderColor: theme.colors.danger },
-  dangerPillText: { color: "#FFD8DE" },
+  dangerPillText: { color: theme.colors.dangerText },
   infoPill: { backgroundColor: theme.colors.infoBg, borderColor: theme.colors.info },
-  infoPillText: { color: "#D6E3FF" },
+  infoPillText: { color: theme.colors.infoText },
   trust: {
     backgroundColor: theme.colors.surfaceAlt,
     borderColor: theme.colors.borderStrong,
@@ -256,40 +276,40 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.success,
   },
   successFeedbackTitle: {
-    color: "#D7F5DE",
+    color: theme.colors.successText,
   },
   successFeedbackText: {
-    color: "#D7F5DE",
+    color: theme.colors.successText,
   },
   errorFeedback: {
     backgroundColor: theme.colors.dangerBg,
     borderColor: theme.colors.danger,
   },
   errorFeedbackTitle: {
-    color: "#FFD8DE",
+    color: theme.colors.dangerText,
   },
   errorFeedbackText: {
-    color: "#FFD8DE",
+    color: theme.colors.dangerText,
   },
   warningFeedback: {
     backgroundColor: theme.colors.warningBg,
     borderColor: theme.colors.warning,
   },
   warningFeedbackTitle: {
-    color: "#FFE0B8",
+    color: theme.colors.warningText,
   },
   warningFeedbackText: {
-    color: "#FFE0B8",
+    color: theme.colors.warningText,
   },
   infoFeedback: {
     backgroundColor: theme.colors.infoBg,
     borderColor: theme.colors.info,
   },
   infoFeedbackTitle: {
-    color: "#D6E3FF",
+    color: theme.colors.infoText,
   },
   infoFeedbackText: {
-    color: "#D6E3FF",
+    color: theme.colors.infoText,
   },
   loading: {
     alignItems: "center",
@@ -367,4 +387,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
   },
-});
+  });
+}

@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
-import { theme } from "../ui/theme";
+import { useTheme } from "../ui/ThemeProvider";
+import type { Theme } from "../ui/theme";
 
 type Props = {
   label:
@@ -19,7 +20,8 @@ type Props = {
 };
 
 export default function StatusChip({ label }: Props) {
-  const tone = getTone(label);
+  const theme = useTheme();
+  const tone = getTone(label, theme);
 
   return (
     <View style={[styles.chip, { backgroundColor: tone.bg, borderColor: tone.border }]}>
@@ -28,33 +30,33 @@ export default function StatusChip({ label }: Props) {
   );
 }
 
-function getTone(label: Props["label"]) {
+function getTone(label: Props["label"], theme: Theme) {
   switch (label) {
     case "Open":
-      return { bg: "#10231A", border: theme.colors.success, text: "#D7F5DE" };
+      return { bg: theme.colors.successBg, border: theme.colors.success, text: theme.colors.successText };
     case "Held":
-      return { bg: "#241C10", border: theme.colors.warning, text: "#FFE0B8" };
+      return { bg: theme.colors.warningBg, border: theme.colors.warning, text: theme.colors.warningText };
     case "Confirm pending":
-      return { bg: theme.colors.infoBg, border: theme.colors.info, text: "#D6E3FF" };
+      return { bg: theme.colors.infoBg, border: theme.colors.info, text: theme.colors.infoText };
     case "In progress":
-      return { bg: "#101F22", border: "#48C7D8", text: "#D9FAFF" };
+      return { bg: theme.colors.infoBg, border: theme.colors.info, text: theme.colors.infoText };
     case "Completed":
-      return { bg: theme.colors.successBg, border: theme.colors.success, text: "#D7F5DE" };
+      return { bg: theme.colors.successBg, border: theme.colors.success, text: theme.colors.successText };
     case "Cancelled":
-      return { bg: theme.colors.dangerBg, border: theme.colors.danger, text: "#FFD8DE" };
+      return { bg: theme.colors.dangerBg, border: theme.colors.danger, text: theme.colors.dangerText };
     case "Applied":
-      return { bg: theme.colors.infoBg, border: theme.colors.info, text: "#D6E3FF" };
+      return { bg: theme.colors.infoBg, border: theme.colors.info, text: theme.colors.infoText };
     case "Selected":
-      return { bg: "#241C10", border: theme.colors.warning, text: "#FFE0B8" };
+      return { bg: theme.colors.warningBg, border: theme.colors.warning, text: theme.colors.warningText };
     case "Rejected":
     case "Withdrawn":
-      return { bg: "#1B1826", border: "#4E4467", text: "#D8CCEF" };
+      return { bg: theme.colors.surfaceAlt, border: theme.colors.borderStrong, text: theme.colors.muted };
     case "Need now":
-      return { bg: "#2A1E3D", border: "#B56CFF", text: "#F0E2FF" };
+      return { bg: theme.colors.accentSoft, border: theme.colors.accent, text: theme.colors.text };
     case "Today":
-      return { bg: "#231D35", border: "#8C65D3", text: "#E8D9FF" };
+      return { bg: theme.colors.surfaceAlt, border: theme.colors.borderStrong, text: theme.colors.text };
     default:
-      return { bg: "#1B1826", border: "#4E4467", text: "#D8CCEF" };
+      return { bg: theme.colors.surfaceAlt, border: theme.colors.borderStrong, text: theme.colors.muted };
   }
 }
 

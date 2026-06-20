@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { getConversation, getConversationLifecycle, getMessages, sendMessage } from "../../../lib/messaging";
@@ -6,8 +6,12 @@ import { hasReported, submitReport } from "../../../lib/reports";
 import { supabase } from "../../../lib/supabase";
 import type { Conversation, Message } from "../../../lib/types";
 import { FeedbackNotice, LoadingState, SignInRequired } from "../../../components/ui/Premium";
+import { useTheme } from "../../../components/ui/ThemeProvider";
+import type { Theme } from "../../../components/ui/theme";
 
 export default function ConversationScreen() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const conversationId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -280,7 +284,7 @@ export default function ConversationScreen() {
           <TextInput
             style={styles.input}
             placeholder={isReadOnly ? "Chat is read-only" : "Type a message..."}
-            placeholderTextColor="#8D79AF"
+            placeholderTextColor={theme.colors.placeholder}
             value={newMessage}
             onChangeText={setNewMessage}
             editable={!sending && !isReadOnly}
@@ -293,7 +297,7 @@ export default function ConversationScreen() {
             disabled={!newMessage.trim() || sending || isReadOnly}
           >
             {sending ? (
-              <ActivityIndicator size="small" color="#140E1D" />
+              <ActivityIndicator size="small" color={theme.colors.accentText} />
             ) : (
               <Text style={styles.sendButtonText}>Send</Text>
             )}
@@ -304,37 +308,38 @@ export default function ConversationScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
   },
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#231A33",
+    borderBottomColor: theme.colors.border,
   },
   backText: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 16,
     fontWeight: "700",
   },
   headerTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 18,
     lineHeight: 23,
     fontWeight: "800",
     marginTop: 10,
   },
   headerSubtitle: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "700",
     marginTop: 4,
   },
   statusText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 12,
     fontWeight: "700",
     marginTop: 4,
@@ -346,8 +351,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   smallButton: {
-    backgroundColor: "#171024",
-    borderColor: "#3A2B52",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -355,53 +360,53 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
   },
   smallButtonText: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "800",
     textAlign: "center",
   },
   safetyBanner: {
-    backgroundColor: "#20172E",
+    backgroundColor: theme.colors.surfaceAlt,
     borderBottomWidth: 1,
-    borderBottomColor: "#5B3A87",
+    borderBottomColor: theme.colors.borderStrong,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   safetyText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 13,
     lineHeight: 18,
   },
   cancelledBanner: {
-    backgroundColor: "#2B161B",
+    backgroundColor: theme.colors.dangerBg,
     borderBottomWidth: 1,
-    borderBottomColor: "#8E4656",
+    borderBottomColor: theme.colors.danger,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   cancelledText: {
-    color: "#FFB0B0",
+    color: theme.colors.dangerText,
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "700",
   },
   guidancePanel: {
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "#231A33",
+    borderBottomColor: theme.colors.border,
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 5,
   },
   guidanceTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 14,
     fontWeight: "800",
     marginBottom: 2,
   },
   guidanceBullet: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 12,
     lineHeight: 17,
   },
@@ -423,13 +428,13 @@ const styles = StyleSheet.create({
   },
   myMessage: {
     alignSelf: "flex-end",
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
   },
   theirMessage: {
     alignSelf: "flex-start",
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
   },
   messageText: {
     fontSize: 15,
@@ -442,17 +447,17 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   myMessageText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
   },
   theirMessageText: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
   },
   emptyContainer: {
     padding: 40,
     alignItems: "center",
   },
   emptyText: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 14,
     textAlign: "center",
   },
@@ -460,7 +465,7 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
     borderTopWidth: 1,
-    borderTopColor: "#231A33",
+    borderTopColor: theme.colors.border,
   },
   composerRow: {
     flexDirection: "row",
@@ -468,23 +473,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sendError: {
-    color: "#FFB0B0",
+    color: theme.colors.dangerText,
     fontSize: 13,
   },
   input: {
     flex: 1,
     minWidth: 190,
-    backgroundColor: "#171024",
+    backgroundColor: theme.colors.inputBg,
     borderWidth: 1,
-    borderColor: "#3A2B52",
+    borderColor: theme.colors.borderStrong,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 15,
   },
   sendButton: {
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 12,
     paddingHorizontal: 16,
     minHeight: 42,
@@ -496,50 +501,51 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   sendButtonText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "800",
   },
   centered: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
   },
   signInContainer: {
     flex: 1,
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     padding: 20,
     justifyContent: "center",
   },
   loadingText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     marginTop: 12,
     fontSize: 15,
   },
   errorTitle: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 18,
     fontWeight: "800",
     marginBottom: 8,
   },
   errorText: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     textAlign: "center",
     marginBottom: 18,
   },
   backButton: {
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 14,
     paddingHorizontal: 18,
     paddingVertical: 12,
   },
   backButtonText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     fontSize: 15,
     fontWeight: "800",
   },
-});
+  });
+}

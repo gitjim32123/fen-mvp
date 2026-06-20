@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Animated, Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../components/ui/ThemeProvider';
+import type { Theme } from '../components/ui/theme';
 
 export default function Index() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const isWeb = Platform.OS === "web";
   const [target, setTarget] = useState<"/app" | "/auth/sign-in" | null>(null);
   const [introDone, setIntroDone] = useState(!isWeb);
@@ -65,7 +69,7 @@ export default function Index() {
   if (!target) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color="#B56CFF" />
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
@@ -73,19 +77,20 @@ export default function Index() {
   return <Redirect href={target} />;
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   loadingScreen: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
   },
   introScreen: {
     flex: 1,
     minHeight: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0E0A14",
+    backgroundColor: theme.colors.bg,
     overflow: "hidden",
     padding: 24,
   },
@@ -94,8 +99,8 @@ const styles = StyleSheet.create({
     width: 360,
     height: 360,
     borderRadius: 180,
-    backgroundColor: "rgba(181,108,255,0.18)",
-    shadowColor: "#B56CFF",
+    backgroundColor: theme.colors.accentSoft,
+    shadowColor: theme.colors.accent,
     shadowOpacity: 0.7,
     shadowRadius: 80,
   },
@@ -110,15 +115,16 @@ const styles = StyleSheet.create({
     maxWidth: "80%",
   },
   tagline: {
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 24,
     fontWeight: "800",
     textAlign: "center",
   },
   subtle: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     fontWeight: "700",
     textAlign: "center",
   },
-});
+  });
+}

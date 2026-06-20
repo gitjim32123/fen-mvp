@@ -1,6 +1,9 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import StatusChip from "./StatusChip";
+import { useTheme } from "../ui/ThemeProvider";
+import type { Theme } from "../ui/theme";
 
 type Props = {
   title: string;
@@ -15,6 +18,9 @@ type Props = {
 };
 
 export default function JobCard({ title, budget, urgency, status = "Open", category, area, distance, travelTime, onPress }: Props) {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.topRow}>
@@ -34,7 +40,7 @@ export default function JobCard({ title, budget, urgency, status = "Open", categ
       </View>
 
       <View style={styles.travelRow}>
-        <Ionicons name="navigate" size={14} color="#B56CFF" />
+        <Ionicons name="navigate" size={14} color={theme.colors.accent} />
         <Text style={styles.travelText}>{travelTime}</Text>
       </View>
 
@@ -45,10 +51,11 @@ export default function JobCard({ title, budget, urgency, status = "Open", categ
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   card: {
-    backgroundColor: "#171024",
-    borderColor: "#231A33",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 18,
     overflow: "hidden",
@@ -65,12 +72,12 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     minWidth: 180,
-    color: "#E7D9FF",
+    color: theme.colors.text,
     fontSize: 18,
     fontWeight: "800",
   },
   budget: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 18,
     fontWeight: "800",
     flexShrink: 0,
@@ -82,7 +89,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   category: {
-    color: "#A590C9",
+    color: theme.colors.subtle,
     fontSize: 13,
     fontWeight: "700",
     paddingHorizontal: 16,
@@ -94,7 +101,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   meta: {
-    color: "#CBB8F1",
+    color: theme.colors.muted,
     fontSize: 14,
     flexShrink: 1,
   },
@@ -105,7 +112,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   travelText: {
-    color: "#B56CFF",
+    color: theme.colors.accent,
     fontSize: 13,
     fontWeight: "700",
     flex: 1,
@@ -114,15 +121,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginHorizontal: 16,
     marginBottom: 16,
-    backgroundColor: "#B56CFF",
+    backgroundColor: theme.colors.accent,
     borderRadius: 14,
     paddingVertical: 12,
   },
   buttonText: {
-    color: "#140E1D",
+    color: theme.colors.accentText,
     textAlign: "center",
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "800",
   },
-});
+  });
+}
