@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View, Pressable } from "react-native";
+import * as Linking from "expo-linking";
 import { router, useFocusEffect } from "expo-router";
 import { getJobsNearby } from "../../lib/jobs";
-import type { Job } from "../../lib/types";
+import type { Job, TransportMode } from "../../lib/types";
 import { getProfile } from "../../lib/auth";
-import { estimateMiles, formatDistanceRange, formatTravelTimeRange, geocodePostcodeArea, getTravelEstimateUnavailableText } from "../../lib/geocoding";
+import { estimateMiles, formatDistanceRange, formatTravelTimeRange, geocodePostcodeArea, getCurrentGpsPoint, getTravelEstimateUnavailableText, type PostcodePoint } from "../../lib/geocoding";
 import JobCard from "../../components/jobs/JobCard";
 import StatusChip from "../../components/jobs/StatusChip";
 import BrowseMap from "../../components/jobs/BrowseMap";
@@ -13,8 +14,38 @@ import { CATEGORY_OPTIONS, normalizeCategory } from "../../lib/categories";
 import { normalizePostcodeDistrict } from "../../lib/postcodeDistricts";
 import { useTheme } from "../../components/ui/ThemeProvider";
 import type { Theme } from "../../components/ui/theme";
+import {
+  fetchJobMatches,
+  getJobMatchingTaskDurationMinutes,
+  isJobMatchingEnabled,
+  orderJobsByMatch,
+  type JobMatchResult,
+} from "../../lib/jobMatching";
+import { getJobRouteTiming, matchingTimingNotice, type JobRouteTiming } from "../../lib/jobTiming";
+import {
+  PUBLIC_BROWSE_COORDINATE_ACCESS,
+  resolveJobRoutePoint,
+  sanitizeJobsForPublicBrowse,
+} from "../../lib/mapPrivacy";
+import {
+  fetchRouteQuotes,
+  formatRouteQuoteDistance,
+  formatRouteQuoteDuration,
+  isRouteQuotesEnabled,
+  routeQuoteFailureMessage,
+  routeGeometryFromQuote,
+  type RoutePreviewGeometry,
+  type RouteQuoteMode,
+} from "../../lib/routeQuotes";
 
 const DISTANCE_OPTIONS = [2, 5, 10];
+
+type RoutePreviewSummary = {
+  distance?: string | null;
+  time?: string | null;
+  mode: RouteQuoteMode;
+  locationPrecision: "exact" | "approximate";
+};
 
 function urgencyFromJob(job: Job): "Need now" | "Today" | "Flexible" {
   return job.urgency;
@@ -52,6 +83,43 @@ function travelTimeFromJob(job: Job): string {
   return getTravelEstimateUnavailableText();
 }
 
+function routeModeFromTransportMode(mode?: TransportMode | string | null): RouteQuoteMode {
+  switch (mode) {
+    case "walk":
+      return "walk";
+    case "cycle":
+      return "bicycle";
+    case "drive":
+      return "car";
+    case "public_transport":
+      return "bus";
+    default:
+      return "walk";
+  }
+}
+
+function routePreviewRequestKey(
+  job: Job,
+  mode: RouteQuoteMode,
+  origin: PostcodePoint,
+  destination: PostcodePoint,
+  precision: "exact" | "approximate"
+) {
+  return [
+    job.id,
+    mode,
+    coordinateKey(origin.latitude),
+    coordinateKey(origin.longitude),
+    coordinateKey(destination.latitude),
+    coordinateKey(destination.longitude),
+    precision,
+  ].join("|");
+}
+
+function coordinateKey(value: number) {
+  return Number.isFinite(value) ? value.toFixed(6) : "unknown";
+}
+
 export default function BrowseScreen() {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -64,19 +132,35 @@ export default function BrowseScreen() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [distanceFilterMiles, setDistanceFilterMiles] = useState<number | null>(null);
   const [travelByJobId, setTravelByJobId] = useState<Record<string, { distance: string; time: string; miles: number }>>({});
+  const [matchingLoading, setMatchingLoading] = useState(false);
+  const [matchingError, setMatchingError] = useState<string | null>(null);
+  const [matchingNotice, setMatchingNotice] = useState<string | null>(null);
+  const [matchesByJobId, setMatchesByJobId] = useState<Record<string, JobMatchResult>>({});
+  const [selectedMapJobId, setSelectedMapJobId] = useState<string | null>(null);
+  const [workerMapArea, setWorkerMapArea] = useState<string | null>(null);
+  const [workerRouteMode, setWorkerRouteMode] = useState<RouteQuoteMode>("walk");
+  const [routeGeometryByJobId, setRouteGeometryByJobId] = useState<Record<string, RoutePreviewGeometry | undefined>>({});
+  const [routePreviewByJobId, setRoutePreviewByJobId] = useState<Record<string, RoutePreviewSummary | undefined>>({});
+  const routePreviewKeysRef = useRef<Record<string, string>>({});
+  const latestRoutePreviewRequestRef = useRef(0);
+
+  const matchingEnabled = isJobMatchingEnabled();
+  const routeQuotesEnabled = isRouteQuotesEnabled();
 
   const loadJobs = useCallback(async (active = true, showSpinner = true) => {
       try {
         if (showSpinner) setLoading(true);
         setErrorText(null);
-        const data = await getJobsNearby();
+        const data = sanitizeJobsForPublicBrowse(await getJobsNearby());
         if (!active) return;
         setJobs(data);
 
         const profile = await getProfile().catch(() => null);
         const transportMode = profile?.transport_mode || "unspecified";
+        if (active) setWorkerRouteMode(routeModeFromTransportMode(transportMode));
 
         const profilePostcode = profile?.postcode?.trim();
+        if (active) setWorkerMapArea(normalizePostcodeDistrict(profilePostcode));
         const fromPoint = profilePostcode ? await geocodePostcodeArea(profilePostcode) : null;
         if (!fromPoint || !active) return;
 
@@ -157,6 +241,232 @@ export default function BrowseScreen() {
     });
   }, [jobs, search, urgencyFilter, categoryFilter, distanceFilterMiles, travelByJobId]);
 
+  useEffect(() => {
+    if (!matchingEnabled) {
+      setMatchingLoading(false);
+      setMatchingError(null);
+      setMatchingNotice(null);
+      setMatchesByJobId({});
+      return;
+    }
+
+    let active = true;
+
+    async function loadMatches() {
+      try {
+        setMatchingLoading(true);
+        setMatchingError(null);
+        setMatchingNotice(null);
+        setMatchesByJobId({});
+
+        const taskDurationMinutes = getJobMatchingTaskDurationMinutes();
+        if (!taskDurationMinutes) {
+          setMatchingNotice("Best jobs unavailable until a matching task duration is configured.");
+          return;
+        }
+
+        const profile = await getProfile().catch(() => null);
+        const workerGps = await getCurrentGpsPoint();
+        const workerProfilePoint = profile?.postcode ? await geocodePostcodeArea(profile.postcode) : null;
+        const workerLocation = workerGps || workerProfilePoint;
+        if (!active) return;
+        if (!workerLocation) {
+          setMatchingNotice("Best jobs unavailable until your current location or profile area is available.");
+          return;
+        }
+
+        const candidates = [];
+        const timingByJobId: Record<string, JobRouteTiming> = {};
+        let hasProvisionalTiming = false;
+        for (const job of filtered.slice(0, 25)) {
+          const timing = getJobRouteTiming(job);
+          const jobPricePence = Math.round(Number(job.budget_gbp) * 100);
+          const jobPostcode = normalizePostcodeDistrict((job as any).postcode_district) || normalizePostcodeDistrict(job.postcode);
+          if (!Number.isFinite(jobPricePence) || jobPricePence <= 0 || !jobPostcode) continue;
+          const location = await geocodePostcodeArea(jobPostcode);
+          if (!active) return;
+          if (!location) continue;
+          timingByJobId[job.id] = timing;
+          if (timing.kind === "provisional") hasProvisionalTiming = true;
+          candidates.push({
+            jobId: job.id,
+            pricePence: jobPricePence,
+            taskDurationMinutes,
+            location,
+            startsAt: timing.startsAt,
+          });
+        }
+
+        if (candidates.length === 0) {
+          setMatchingNotice("Best jobs are estimated using provisional times until a start time is agreed. Jobs still need a mappable area.");
+          return;
+        }
+
+        const response = await fetchJobMatches(workerLocation, candidates);
+        if (!active) return;
+        setMatchingNotice(matchingTimingNotice(hasProvisionalTiming));
+        setMatchesByJobId(
+          Object.fromEntries(
+            response.ranked_jobs.map((match) => {
+              const timing = timingByJobId[match.job_id];
+              return [
+                match.job_id,
+                {
+                  ...match,
+                  timing_kind: timing?.kind,
+                  timing_label: timing?.shortLabel,
+                },
+              ];
+            })
+          )
+        );
+      } catch (error: any) {
+        if (!active) return;
+        const reason = routeQuoteFailureMessage(error);
+        setMatchingError(
+          reason === "Route service unavailable"
+            ? "Route service unavailable. Showing the usual job order."
+            : `${reason} Showing the usual job order.`
+        );
+        setMatchesByJobId({});
+      } finally {
+        if (active) setMatchingLoading(false);
+      }
+    }
+
+    loadMatches();
+
+    return () => {
+      active = false;
+    };
+  }, [matchingEnabled, filtered]);
+
+  const displayedJobs = useMemo(() => {
+    return matchingEnabled && Object.keys(matchesByJobId).length > 0
+      ? orderJobsByMatch(filtered, matchesByJobId)
+      : filtered;
+  }, [filtered, matchingEnabled, matchesByJobId]);
+
+  const selectedMapJob = useMemo(
+    () => displayedJobs.find((job) => job.id === selectedMapJobId) || null,
+    [displayedJobs, selectedMapJobId]
+  );
+
+  const selectedRoutePreviewMode = useMemo(() => {
+    const matchMode = selectedMapJob ? matchesByJobId[selectedMapJob.id]?.best_mode : null;
+    return matchMode || workerRouteMode;
+  }, [matchesByJobId, selectedMapJob, workerRouteMode]);
+
+  useEffect(() => {
+    if (displayedJobs.length === 0) {
+      if (selectedMapJobId) setSelectedMapJobId(null);
+      return;
+    }
+    if (selectedMapJobId && !displayedJobs.some((job) => job.id === selectedMapJobId)) {
+      setSelectedMapJobId(null);
+    }
+  }, [displayedJobs, selectedMapJobId]);
+
+  useEffect(() => {
+    if (!routeQuotesEnabled || !selectedMapJob) return;
+
+    let active = true;
+    const requestId = latestRoutePreviewRequestRef.current + 1;
+    latestRoutePreviewRequestRef.current = requestId;
+
+    async function loadRoutePreview() {
+      try {
+        const profile = await getProfile().catch(() => null);
+        const workerGps = await getCurrentGpsPoint();
+        const workerProfilePoint = profile?.postcode ? await geocodePostcodeArea(profile.postcode) : null;
+        const origin = workerGps || workerProfilePoint;
+        if (!origin || !selectedMapJob) return;
+
+        const destination = await resolveJobRoutePoint(selectedMapJob, PUBLIC_BROWSE_COORDINATE_ACCESS);
+        if (!active || latestRoutePreviewRequestRef.current !== requestId || !destination) return;
+
+        const requestKey = routePreviewRequestKey(
+          selectedMapJob,
+          selectedRoutePreviewMode,
+          origin,
+          destination.point,
+          destination.precision
+        );
+        if (routePreviewKeysRef.current[selectedMapJob.id] === requestKey) return;
+
+        const previewModes: RouteQuoteMode[] =
+          selectedRoutePreviewMode === "bus"
+            ? ["bus", "walk", "bicycle", "car"]
+            : [selectedRoutePreviewMode];
+        const response = await fetchRouteQuotes(origin, destination.point, previewModes);
+        if (!active || latestRoutePreviewRequestRef.current !== requestId) return;
+        routePreviewKeysRef.current[selectedMapJob.id] = requestKey;
+
+        const route = response.routes.find((option) => option.mode === selectedRoutePreviewMode && option.status === "available")
+          || response.routes.find((option) => option.status === "available");
+        const geometry = routeGeometryFromQuote(route);
+
+        setRouteGeometryByJobId((current) => ({
+          ...current,
+          [selectedMapJob.id]: geometry || undefined,
+        }));
+        setRoutePreviewByJobId((current) => ({
+          ...current,
+          [selectedMapJob.id]: route
+            ? {
+                distance: formatRouteQuoteDistance(route.distance_meters),
+                time: formatRouteQuoteDuration(route.duration_seconds),
+                mode: route.mode,
+                locationPrecision: destination.precision,
+              }
+            : undefined,
+        }));
+      } catch {
+        if (!active || !selectedMapJob) return;
+        setRouteGeometryByJobId((current) => ({
+          ...current,
+          [selectedMapJob.id]: undefined,
+        }));
+        setRoutePreviewByJobId((current) => ({
+          ...current,
+          [selectedMapJob.id]: undefined,
+        }));
+      }
+    }
+
+    loadRoutePreview();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    routeQuotesEnabled,
+    selectedMapJob?.id,
+    selectedMapJob?.postcode,
+    selectedMapJob?.postcode_district,
+    selectedRoutePreviewMode,
+  ]);
+
+  async function handleNavigateToJobArea(job: Job) {
+    const area = areaFromJob(job);
+    if (!area || area === "Local") {
+      router.push(`/app/job/${job.id}`);
+      return;
+    }
+
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${area} UK`)}`;
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        router.push(`/app/job/${job.id}`);
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      router.push(`/app/job/${job.id}`);
+    }
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <PageHeader title="Browse nearby jobs" subtitle="Quick local jobs with area-first privacy and simple details." />
@@ -171,7 +481,20 @@ export default function BrowseScreen() {
         Exact addresses stay hidden. Browse by area and arrange details only after someone is chosen.
       </TrustBanner>
 
-      <BrowseMap jobs={filtered} onJobPress={(jobId: string) => router.push(`/app/job/${jobId}`)} />
+      <BrowseMap
+        jobs={displayedJobs}
+        selectedId={selectedMapJobId}
+        originDistrict={workerMapArea}
+        travelByJobId={travelByJobId}
+        matchesByJobId={matchesByJobId}
+        routeGeometryByJobId={routeGeometryByJobId}
+        routePreviewByJobId={routePreviewByJobId}
+        loading={loading}
+        errorText={errorText}
+        onJobSelect={setSelectedMapJobId}
+        onOpenJob={(jobId: string) => router.push(`/app/job/${jobId}`)}
+        onNavigate={handleNavigateToJobArea}
+      />
 
       <TextInput
         placeholder="Search jobs"
@@ -242,14 +565,26 @@ export default function BrowseScreen() {
         <LoadingState text="Loading jobs..." />
       ) : errorText ? (
         <FeedbackNotice type="error" text={errorText} />
-      ) : filtered.length === 0 ? (
+      ) : displayedJobs.length === 0 ? (
         <EmptyState
           title="No local jobs yet"
           text="New FEN jobs will appear here as people nearby post tasks."
         />
       ) : (
         <View style={styles.list}>
-          {filtered.map((job) => (
+          {matchingEnabled && matchingLoading ? (
+            <FeedbackNotice type="info" text="Loading best jobs for you..." />
+          ) : null}
+          {matchingEnabled && matchingError ? (
+            <FeedbackNotice type="error" text={matchingError} />
+          ) : null}
+          {matchingEnabled && !matchingLoading && !matchingError && matchingNotice ? (
+            <FeedbackNotice type="info" text={matchingNotice} />
+          ) : null}
+          {matchingEnabled && Object.keys(matchesByJobId).length > 0 ? (
+            <Text style={styles.matchingTitle}>Best jobs for me</Text>
+          ) : null}
+          {displayedJobs.map((job) => (
             <JobCard
               key={job.id}
               title={job.title}
@@ -260,6 +595,7 @@ export default function BrowseScreen() {
               area={areaFromJob(job)}
               distance={travelByJobId[job.id]?.distance || "Distance unavailable"}
               travelTime={travelByJobId[job.id]?.time || travelTimeFromJob(job)}
+              match={matchesByJobId[job.id]}
               onPress={() => router.push(`/app/job/${job.id}`)}
             />
           ))}
@@ -379,6 +715,13 @@ function createStyles(theme: Theme) {
   list: {
     gap: 14,
     marginTop: 4,
+  },
+  matchingTitle: {
+    color: theme.colors.accent,
+    fontSize: 15,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
   centered: {
     alignItems: "center",

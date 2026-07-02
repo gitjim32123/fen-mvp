@@ -9,6 +9,7 @@ export type PostcodePoint = {
 export const DEFAULT_COMMITMENT_BUFFER_MINUTES = 45;
 export const COMMITMENT_GRACE_MINUTES = 15;
 export const COMMITMENT_ESTIMATE_VERSION = "fen-outcode-v1";
+const GEOCODING_TIMEOUT_MS = 5000;
 
 export function roundToFive(value: number) {
   return Math.max(5, Math.round(value / 5) * 5);
@@ -22,7 +23,7 @@ export async function geocodePostcode(postcode: string): Promise<PostcodePoint |
     const compact = clean.replace(/\s+/g, "").toUpperCase();
     const isOutcode = /^[A-Z]{1,2}\d[A-Z\d]?$/.test(compact);
     const path = isOutcode ? "outcodes" : "postcodes";
-    const response = await fetch(`https://api.postcodes.io/${path}/${encodeURIComponent(clean)}`);
+    const response = await fetchWithTimeout(`https://api.postcodes.io/${path}/${encodeURIComponent(clean)}`);
     if (!response.ok) return null;
     const json = await response.json();
     const result = json?.result;
@@ -138,4 +139,19 @@ export function calculateCommitmentWindowStart(startTime?: string | null, travel
 
 export function getTravelEstimateUnavailableText() {
   return "Travel estimate unavailable until both postcode areas are known.";
+}
+
+function fetchWithTimeout(url: string, timeoutMs = GEOCODING_TIMEOUT_MS): Promise<Response> {
+  if (typeof AbortController === "undefined") {
+    return Promise.race([
+      fetch(url),
+      new Promise<Response>((_, reject) => {
+        setTimeout(() => reject(new Error("Geocoding request timed out.")), timeoutMs);
+      }),
+    ]);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeout));
 }

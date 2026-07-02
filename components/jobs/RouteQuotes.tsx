@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   fetchRouteQuotes,
@@ -7,6 +7,7 @@ import {
   formatRouteQuoteDistance,
   formatRouteQuoteDuration,
   isRouteQuotesEnabled,
+  routeQuoteFailureMessage,
   routeQuoteDisplayName,
   ROUTE_QUOTE_MODES,
   routeQuoteStatusText,
@@ -38,6 +39,7 @@ export default function RouteQuotes({ jobPostcode, fallbackText }: RouteQuotesPr
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [state, setState] = useState<LoadState>({ status: "idle" });
+  const [expanded, setExpanded] = useState(false);
 
   const enabled = isRouteQuotesEnabled();
   const safeJobPostcode = normalizePostcodeDistrict(jobPostcode);
@@ -81,7 +83,7 @@ export default function RouteQuotes({ jobPostcode, fallbackText }: RouteQuotesPr
         if (!active) return;
         setState({
           status: "failed",
-          reason: error?.message || "Travel quotes could not be loaded.",
+          reason: routeQuoteFailureMessage(error),
         });
       }
     }
@@ -97,10 +99,15 @@ export default function RouteQuotes({ jobPostcode, fallbackText }: RouteQuotesPr
 
   return (
     <View style={styles.card}>
-      <Text style={styles.sectionTitle}>Travel options</Text>
-      <Text style={styles.helperText}>
-        Verified route quotes from your current location when available; otherwise your profile area is used.
-      </Text>
+      <Pressable style={styles.headerRow} onPress={() => setExpanded((current) => !current)}>
+        <View style={styles.headerTextColumn}>
+          <Text style={styles.sectionTitle}>Travel options</Text>
+          <Text style={styles.helperText}>
+            {expanded ? "Verified route details from route-ai-agent." : "Collapsed. Tap to compare walk, bicycle, car, and bus."}
+          </Text>
+        </View>
+        <Text style={styles.expandText}>{expanded ? "Hide" : "Show"}</Text>
+      </Pressable>
 
       {state.status === "loading" || state.status === "idle" ? (
         <View style={styles.loadingRow}>
@@ -117,6 +124,11 @@ export default function RouteQuotes({ jobPostcode, fallbackText }: RouteQuotesPr
         <View style={styles.noticeBox}>
           <Text style={styles.noticeTitle}>Travel options unavailable</Text>
           <Text style={styles.noticeText}>{state.reason}</Text>
+        </View>
+      ) : readyState && !expanded ? (
+        <View style={styles.noticeBox}>
+          <Text style={styles.noticeTitle}>Route options ready</Text>
+          <Text style={styles.noticeText}>Show details to compare verified walk, bicycle, car, and bus routes.</Text>
         </View>
       ) : readyState ? (
         <>
@@ -197,11 +209,21 @@ function createStyles(theme: Theme) {
       borderWidth: 1,
       borderColor: theme.colors.border,
     },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 8,
+    },
+    headerTextColumn: {
+      flex: 1,
+    },
     sectionTitle: {
       color: theme.colors.accent,
       fontSize: 14,
       fontWeight: "800",
-      marginBottom: 8,
+      marginBottom: 4,
       textTransform: "uppercase",
       letterSpacing: 1,
     },
@@ -209,7 +231,11 @@ function createStyles(theme: Theme) {
       color: theme.colors.muted,
       fontSize: 13,
       lineHeight: 19,
-      marginBottom: 12,
+    },
+    expandText: {
+      color: theme.colors.text,
+      fontSize: 13,
+      fontWeight: "900",
     },
     sourceText: {
       color: theme.colors.subtle,
