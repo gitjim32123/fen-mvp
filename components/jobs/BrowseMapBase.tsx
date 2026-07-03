@@ -414,8 +414,8 @@ export default function BrowseMapBase({
                 <Text style={styles.previewText}>
                   {hasRealRouteGeometry
                     ? previewUsesApproximatePoint
-                      ? "Route preview from route-ai-agent using approximate area coordinates."
-                      : "Route preview from route-ai-agent."
+                      ? "Verified route preview using approximate area coordinates."
+                      : "Verified route preview."
                     : "Route preview unavailable"}
                 </Text>
               </View>
@@ -495,9 +495,9 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     shell: {
       backgroundColor: theme.colors.bgDeep,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
+      borderRadius: 12,
       overflow: "hidden",
     },
     mapArea: {
@@ -534,8 +534,8 @@ function createStyles(theme: Theme) {
       borderColor: theme.colors.border,
       borderWidth: 1,
       borderRadius: 999,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
     },
     areaLabelOne: {
       left: "36%",
@@ -573,7 +573,7 @@ function createStyles(theme: Theme) {
       alignItems: "center",
       gap: 6,
       backgroundColor: theme.colors.overlaySoft,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
       borderRadius: 999,
       paddingHorizontal: 10,
@@ -603,15 +603,15 @@ function createStyles(theme: Theme) {
       transform: [{ translateX: -27 }, { translateY: -39 }, { scale: 1.08 }],
     },
     pinHead: {
-      minWidth: 46,
-      height: 28,
+      minWidth: 44,
+      height: 30,
       borderRadius: 999,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: theme.colors.surfaceRaised,
       borderColor: theme.colors.borderStrong,
-      borderWidth: 1,
-      paddingHorizontal: 9,
+      borderWidth: 1.5,
+      paddingHorizontal: 10,
     },
     pinHeadSelected: {
       backgroundColor: theme.colors.accent,
@@ -652,11 +652,11 @@ function createStyles(theme: Theme) {
       right: 18,
       top: 96,
       backgroundColor: theme.colors.overlaySoft,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
-      padding: 14,
-      gap: 4,
+      borderRadius: 12,
+      padding: 16,
+      gap: 6,
       zIndex: 8,
     },
     stateTitle: {
@@ -681,9 +681,9 @@ function createStyles(theme: Theme) {
       backgroundColor: theme.colors.surface,
       borderColor: theme.colors.borderStrong,
       borderWidth: 1,
-      borderRadius: 8,
-      padding: 12,
-      gap: 8,
+      borderRadius: 14,
+      padding: 14,
+      gap: 10,
       zIndex: 10,
     },
     sheetCompact: {
@@ -758,7 +758,7 @@ function createStyles(theme: Theme) {
       borderColor: theme.colors.border,
       borderWidth: 1,
       borderRadius: 999,
-      paddingHorizontal: 10,
+      paddingHorizontal: 11,
       paddingVertical: 6,
       maxWidth: 180,
     },
@@ -777,10 +777,10 @@ function createStyles(theme: Theme) {
       fontWeight: "900",
     },
     routePanel: {
-      backgroundColor: theme.colors.bg,
+      backgroundColor: theme.colors.surfaceAlt,
       borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
+      borderRadius: 12,
       padding: 10,
       gap: 8,
     },
@@ -831,8 +831,8 @@ function createStyles(theme: Theme) {
       backgroundColor: theme.colors.surfaceAlt,
       borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
-      padding: 8,
+      borderRadius: 12,
+      padding: 10,
     },
     summaryTextBlock: {
       flex: 1,
@@ -855,7 +855,7 @@ function createStyles(theme: Theme) {
       flexDirection: "row",
       alignItems: "center",
       gap: 7,
-      borderRadius: 8,
+      borderRadius: 12,
       borderWidth: 1,
       paddingHorizontal: 9,
       paddingVertical: 8,
@@ -883,7 +883,7 @@ function createStyles(theme: Theme) {
       flex: 1,
       borderColor: theme.colors.borderStrong,
       borderWidth: 1,
-      borderRadius: 8,
+      borderRadius: 12,
       paddingVertical: 10,
       alignItems: "center",
     },
@@ -900,7 +900,7 @@ function createStyles(theme: Theme) {
       justifyContent: "center",
       gap: 7,
       backgroundColor: theme.colors.accent,
-      borderRadius: 8,
+      borderRadius: 12,
       paddingVertical: 10,
     },
     primaryButtonText: {
@@ -923,7 +923,7 @@ function createStyles(theme: Theme) {
       lineHeight: 16,
       fontWeight: "800",
       backgroundColor: theme.colors.overlaySoft,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
       borderRadius: 999,
       paddingHorizontal: 12,

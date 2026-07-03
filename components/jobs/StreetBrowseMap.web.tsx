@@ -318,8 +318,8 @@ function MapLibreBrowseMap({
               <Text style={styles.previewText}>
                 {hasRealRouteGeometry
                   ? previewUsesApproximatePoint
-                    ? "Route preview from route-ai-agent using approximate area coordinates."
-                    : "Route preview from route-ai-agent."
+                    ? "Verified route preview using approximate area coordinates."
+                    : "Verified route preview."
                   : "Route preview unavailable"}
               </Text>
             </View>
@@ -426,10 +426,10 @@ function mapCss(theme: Theme) {
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 42px;
-      height: 30px;
-      padding: 0 10px;
-      border: 1px solid ${theme.colors.borderStrong};
+      min-width: 44px;
+      height: 32px;
+      padding: 0 11px;
+      border: 1.5px solid ${theme.colors.borderStrong};
       border-radius: 999px;
       background: ${theme.colors.surfaceRaised};
       color: ${theme.colors.text};
@@ -438,7 +438,7 @@ function mapCss(theme: Theme) {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       cursor: pointer;
       pointer-events: auto;
-      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
     }
     .maplibregl-marker {
       z-index: 6;
@@ -457,9 +457,9 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     shell: {
       backgroundColor: theme.colors.bgDeep,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
+      borderRadius: 12,
       overflow: "hidden",
     },
     mapArea: {
@@ -481,9 +481,9 @@ function createStyles(theme: Theme) {
     },
     titlePill: {
       backgroundColor: theme.colors.overlaySoft,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
+      borderRadius: 12,
       paddingHorizontal: 12,
       paddingVertical: 10,
       maxWidth: 300,
@@ -510,9 +510,9 @@ function createStyles(theme: Theme) {
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: theme.colors.overlaySoft,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
+      borderRadius: 12,
     },
     stateOverlay: {
       position: "absolute",
@@ -520,11 +520,11 @@ function createStyles(theme: Theme) {
       right: 18,
       top: 96,
       backgroundColor: theme.colors.overlaySoft,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
-      padding: 14,
-      gap: 4,
+      borderRadius: 12,
+      padding: 16,
+      gap: 6,
       zIndex: 8,
     },
     stateTitle: {
@@ -549,9 +549,9 @@ function createStyles(theme: Theme) {
       backgroundColor: theme.colors.surface,
       borderColor: theme.colors.borderStrong,
       borderWidth: 1,
-      borderRadius: 8,
-      padding: 12,
-      gap: 8,
+      borderRadius: 14,
+      padding: 14,
+      gap: 10,
       zIndex: 10,
     },
     grabber: {
@@ -622,7 +622,7 @@ function createStyles(theme: Theme) {
       borderColor: theme.colors.border,
       borderWidth: 1,
       borderRadius: 999,
-      paddingHorizontal: 10,
+      paddingHorizontal: 11,
       paddingVertical: 6,
       maxWidth: 180,
     },
@@ -654,8 +654,8 @@ function createStyles(theme: Theme) {
       backgroundColor: theme.colors.surfaceAlt,
       borderColor: theme.colors.border,
       borderWidth: 1,
-      borderRadius: 8,
-      padding: 8,
+      borderRadius: 12,
+      padding: 10,
     },
     summaryTextBlock: {
       flex: 1,
@@ -678,7 +678,7 @@ function createStyles(theme: Theme) {
       flexDirection: "row",
       alignItems: "center",
       gap: 7,
-      borderRadius: 8,
+      borderRadius: 12,
       borderWidth: 1,
       paddingHorizontal: 9,
       paddingVertical: 8,
@@ -706,7 +706,7 @@ function createStyles(theme: Theme) {
       flex: 1,
       borderColor: theme.colors.borderStrong,
       borderWidth: 1,
-      borderRadius: 8,
+      borderRadius: 12,
       paddingVertical: 10,
       alignItems: "center",
     },
@@ -723,7 +723,7 @@ function createStyles(theme: Theme) {
       justifyContent: "center",
       gap: 7,
       backgroundColor: theme.colors.accent,
-      borderRadius: 8,
+      borderRadius: 12,
       paddingVertical: 10,
     },
     primaryButtonText: {
@@ -746,7 +746,7 @@ function createStyles(theme: Theme) {
       lineHeight: 16,
       fontWeight: "800",
       backgroundColor: theme.colors.overlaySoft,
-      borderColor: theme.colors.borderStrong,
+      borderColor: theme.colors.border,
       borderWidth: 1,
       borderRadius: 999,
       paddingHorizontal: 12,

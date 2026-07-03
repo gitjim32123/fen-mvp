@@ -171,7 +171,12 @@ export default function RecommendedOptionCard({ job }: RecommendedOptionCardProp
       ) : readyState ? (
         <>
           <View style={styles.recommendationHeader}>
-            <Text style={styles.recommendationText}>{recommendationTier(readyState.match)}</Text>
+            <View style={styles.recommendationTopRow}>
+              <Text style={styles.recommendationText}>{recommendationTier(readyState.match)}</Text>
+              <View style={[styles.statusBadge, matchStatusBadgeStyle(styles, readyState.match.status)]}>
+                <Text style={styles.statusBadgeText}>{matchStatusLabel(readyState.match.status)}</Text>
+              </View>
+            </View>
             <Text style={styles.modeText}>{modeLabel(readyState.match.best_mode)}</Text>
             <Text style={styles.timingText}>{readyState.timing.label}</Text>
           </View>
@@ -228,6 +233,18 @@ function Notice({
   );
 }
 
+function matchStatusLabel(status: JobMatchResult["status"]) {
+  if (status === "available") return "Verified";
+  if (status === "partial") return "Partial";
+  return "Unavailable";
+}
+
+function matchStatusBadgeStyle(styles: ReturnType<typeof createStyles>, status: JobMatchResult["status"]) {
+  if (status === "available") return styles.statusBadgeAvailable;
+  if (status === "partial") return styles.statusBadgePartial;
+  return styles.statusBadgeUnavailable;
+}
+
 async function resolveWorkerLocation(): Promise<PostcodePoint | null> {
   const gpsPoint = await getCurrentGpsPoint();
   if (gpsPoint) return gpsPoint;
@@ -241,19 +258,18 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 18,
+      borderRadius: 16,
       padding: 16,
       marginBottom: 12,
       borderWidth: 1,
       borderColor: theme.colors.border,
     },
     sectionTitle: {
-      color: theme.colors.accent,
+      color: theme.colors.text,
       fontSize: 14,
       fontWeight: "800",
       marginBottom: 10,
       textTransform: "uppercase",
-      letterSpacing: 1,
     },
     loadingRow: {
       flexDirection: "row",
@@ -269,8 +285,8 @@ function createStyles(theme: Theme) {
     noticeBox: {
       backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.colors.borderStrong,
-      borderRadius: 14,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
       padding: 12,
       gap: 4,
     },
@@ -287,16 +303,50 @@ function createStyles(theme: Theme) {
     recommendationHeader: {
       backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.colors.borderStrong,
-      borderRadius: 14,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
       padding: 12,
       marginBottom: 10,
       gap: 4,
     },
+    recommendationTopRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
     recommendationText: {
       color: theme.colors.successText,
-      fontSize: 20,
+      fontSize: 18,
+      lineHeight: 23,
       fontWeight: "900",
+      flex: 1,
+    },
+    statusBadge: {
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      flexShrink: 0,
+    },
+    statusBadgeAvailable: {
+      backgroundColor: theme.colors.successBg,
+      borderColor: theme.colors.success,
+    },
+    statusBadgePartial: {
+      backgroundColor: theme.colors.warningBg,
+      borderColor: theme.colors.warning,
+    },
+    statusBadgeUnavailable: {
+      backgroundColor: theme.colors.dangerBg,
+      borderColor: theme.colors.danger,
+    },
+    statusBadgeText: {
+      color: theme.colors.text,
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: "900",
+      textTransform: "uppercase",
     },
     modeText: {
       color: theme.colors.muted,
@@ -310,10 +360,10 @@ function createStyles(theme: Theme) {
       fontWeight: "700",
     },
     metricGrid: {
-      backgroundColor: theme.colors.bg,
+      backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.colors.borderStrong,
-      borderRadius: 14,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
       overflow: "hidden",
     },
     metricRow: {

@@ -188,7 +188,12 @@ export default function ProfitabilityCard({ job }: ProfitabilityCardProps) {
         <Notice title="Profitability unavailable" text={state.reason} styles={styles} />
       ) : readyState ? (
         <>
-          <Text style={styles.sourceText}>Using {readyState.modeLabel.toLowerCase()} profitability from route-ai-agent.</Text>
+          <View style={styles.statusHeader}>
+            <Text style={styles.sourceText}>Using verified {readyState.modeLabel.toLowerCase()} travel data.</Text>
+            <View style={[styles.statusBadge, statusBadgeStyle(styles, readyState.analysis.status)]}>
+              <Text style={styles.statusBadgeText}>{profitabilityStatusLabel(readyState.analysis)}</Text>
+            </View>
+          </View>
           <Text style={styles.timingText}>{readyState.timing.label}</Text>
           <View style={styles.metricGrid}>
             <Metric label="Job Pay" value={formatPence(readyState.analysis.job_price_pence)} styles={styles} />
@@ -264,25 +269,57 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 18,
+      borderRadius: 16,
       padding: 16,
       marginBottom: 12,
       borderWidth: 1,
       borderColor: theme.colors.border,
     },
     sectionTitle: {
-      color: theme.colors.accent,
+      color: theme.colors.text,
       fontSize: 14,
       fontWeight: "800",
       marginBottom: 8,
       textTransform: "uppercase",
-      letterSpacing: 1,
+    },
+    statusHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      marginBottom: 6,
     },
     sourceText: {
       color: theme.colors.subtle,
       fontSize: 12,
       fontWeight: "700",
-      marginBottom: 4,
+      flex: 1,
+    },
+    statusBadge: {
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      flexShrink: 0,
+    },
+    statusBadgeAvailable: {
+      backgroundColor: theme.colors.successBg,
+      borderColor: theme.colors.success,
+    },
+    statusBadgePartial: {
+      backgroundColor: theme.colors.warningBg,
+      borderColor: theme.colors.warning,
+    },
+    statusBadgeUnavailable: {
+      backgroundColor: theme.colors.dangerBg,
+      borderColor: theme.colors.danger,
+    },
+    statusBadgeText: {
+      color: theme.colors.text,
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: "900",
+      textTransform: "uppercase",
     },
     timingText: {
       color: theme.colors.subtle,
@@ -304,8 +341,8 @@ function createStyles(theme: Theme) {
     noticeBox: {
       backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.colors.borderStrong,
-      borderRadius: 14,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
       padding: 12,
       gap: 4,
     },
@@ -320,10 +357,10 @@ function createStyles(theme: Theme) {
       lineHeight: 19,
     },
     metricGrid: {
-      backgroundColor: theme.colors.bg,
+      backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.colors.borderStrong,
-      borderRadius: 14,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
       overflow: "hidden",
     },
     metricRow: {
@@ -350,7 +387,7 @@ function createStyles(theme: Theme) {
     },
     statusNotice: {
       borderWidth: 1,
-      borderRadius: 14,
+      borderRadius: 12,
       padding: 12,
       marginTop: 10,
     },
@@ -369,4 +406,10 @@ function createStyles(theme: Theme) {
       fontWeight: "700",
     },
   });
+}
+
+function statusBadgeStyle(styles: ReturnType<typeof createStyles>, status: ProfitabilityAnalysis["status"]) {
+  if (status === "available") return styles.statusBadgeAvailable;
+  if (status === "partial") return styles.statusBadgePartial;
+  return styles.statusBadgeUnavailable;
 }

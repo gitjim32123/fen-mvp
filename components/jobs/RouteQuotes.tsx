@@ -103,7 +103,7 @@ export default function RouteQuotes({ jobPostcode, fallbackText }: RouteQuotesPr
         <View style={styles.headerTextColumn}>
           <Text style={styles.sectionTitle}>Travel options</Text>
           <Text style={styles.helperText}>
-            {expanded ? "Verified route details from route-ai-agent." : "Collapsed. Tap to compare walk, bicycle, car, and bus."}
+            {expanded ? "Verified travel details are ready." : "Collapsed. Tap to compare walk, bicycle, car, and bus."}
           </Text>
         </View>
         <Text style={styles.expandText}>{expanded ? "Hide" : "Show"}</Text>
@@ -128,7 +128,7 @@ export default function RouteQuotes({ jobPostcode, fallbackText }: RouteQuotesPr
       ) : readyState && !expanded ? (
         <View style={styles.noticeBox}>
           <Text style={styles.noticeTitle}>Route options ready</Text>
-          <Text style={styles.noticeText}>Show details to compare verified walk, bicycle, car, and bus routes.</Text>
+          <Text style={styles.noticeText}>Show details to compare walk, bicycle, car, and bus options.</Text>
         </View>
       ) : readyState ? (
         <>
@@ -164,14 +164,18 @@ function RouteQuoteRow({
   const distance = formatRouteQuoteDistance(route?.distance_meters);
   const cost = route ? formatRouteQuoteCost(route) : null;
   const available = route?.status === "available";
+  const statusLabel = route ? routeQuoteStatusBadge(route) : "Unavailable";
 
   return (
     <View style={[styles.quoteRow, !available && styles.quoteRowUnavailable]}>
       <View style={styles.quoteTitleColumn}>
         <Text style={styles.quoteMode}>{routeQuoteDisplayName(mode)}</Text>
-        <Text style={[styles.quoteStatus, available ? styles.quoteStatusAvailable : styles.quoteStatusUnavailable]}>
-          {route ? routeQuoteStatusText(route) : "Route unavailable"}
-        </Text>
+        <View style={[styles.quoteStatusBadge, available ? styles.quoteStatusAvailable : styles.quoteStatusUnavailable]}>
+          <Text style={[styles.quoteStatusText, available ? styles.quoteStatusTextAvailable : styles.quoteStatusTextUnavailable]}>
+            {statusLabel}
+          </Text>
+        </View>
+        {!available ? <Text style={styles.quoteReason}>{route ? routeQuoteStatusText(route) : "Route unavailable"}</Text> : null}
       </View>
       <View style={styles.quoteValues}>
         <Text style={styles.quoteValue}>{duration || "Unavailable"}</Text>
@@ -180,6 +184,12 @@ function RouteQuoteRow({
       </View>
     </View>
   );
+}
+
+function routeQuoteStatusBadge(route: RouteQuoteOption) {
+  if (route.status !== "available") return "Unavailable";
+  if (route.confidence === "HIGH") return "Verified";
+  return "Estimated";
 }
 
 async function resolveWorkerOrigin(): Promise<{
@@ -203,7 +213,7 @@ function createStyles(theme: Theme) {
   return StyleSheet.create({
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 18,
+      borderRadius: 16,
       padding: 16,
       marginBottom: 12,
       borderWidth: 1,
@@ -220,12 +230,11 @@ function createStyles(theme: Theme) {
       flex: 1,
     },
     sectionTitle: {
-      color: theme.colors.accent,
+      color: theme.colors.text,
       fontSize: 14,
       fontWeight: "800",
       marginBottom: 4,
       textTransform: "uppercase",
-      letterSpacing: 1,
     },
     helperText: {
       color: theme.colors.muted,
@@ -233,7 +242,7 @@ function createStyles(theme: Theme) {
       lineHeight: 19,
     },
     expandText: {
-      color: theme.colors.text,
+      color: theme.colors.accent,
       fontSize: 13,
       fontWeight: "900",
     },
@@ -257,8 +266,8 @@ function createStyles(theme: Theme) {
     noticeBox: {
       backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.colors.borderStrong,
-      borderRadius: 14,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
       padding: 12,
       gap: 4,
     },
@@ -276,10 +285,10 @@ function createStyles(theme: Theme) {
       gap: 8,
     },
     quoteRow: {
-      backgroundColor: theme.colors.bg,
+      backgroundColor: theme.colors.surfaceAlt,
       borderWidth: 1,
-      borderColor: theme.colors.borderStrong,
-      borderRadius: 14,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
       padding: 12,
       flexDirection: "row",
       justifyContent: "space-between",
@@ -292,23 +301,45 @@ function createStyles(theme: Theme) {
     quoteTitleColumn: {
       flex: 1,
       minWidth: 120,
-      gap: 3,
+      gap: 6,
     },
     quoteMode: {
       color: theme.colors.text,
       fontSize: 16,
       fontWeight: "800",
     },
-    quoteStatus: {
+    quoteStatusBadge: {
+      alignSelf: "flex-start",
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    quoteStatusAvailable: {
+      backgroundColor: theme.colors.successBg,
+      borderColor: theme.colors.success,
+    },
+    quoteStatusUnavailable: {
+      backgroundColor: theme.colors.warningBg,
+      borderColor: theme.colors.warning,
+    },
+    quoteStatusText: {
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: "900",
+      textTransform: "uppercase",
+    },
+    quoteStatusTextAvailable: {
+      color: theme.colors.successText,
+    },
+    quoteStatusTextUnavailable: {
+      color: theme.colors.warningText,
+    },
+    quoteReason: {
+      color: theme.colors.muted,
       fontSize: 12,
       lineHeight: 16,
       fontWeight: "700",
-    },
-    quoteStatusAvailable: {
-      color: theme.colors.successText,
-    },
-    quoteStatusUnavailable: {
-      color: theme.colors.warningText,
     },
     quoteValues: {
       alignItems: "flex-end",
